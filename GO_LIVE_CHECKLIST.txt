@@ -1,0 +1,24 @@
+SIMAK SMANTANG v52 — GO-LIVE CHECKLIST
+
+[ ] v52 sudah terdeploy ke Vercel
+[ ] Domain Vercel ada di Firebase Authorized Domains
+[ ] Firebase Web Config benar
+[ ] Email/Password Authentication aktif
+[ ] Firestore Rules v52 diterapkan
+[ ] Storage Rules v52 diterapkan
+[ ] users/{uid} Kepala Sekolah valid dan active=true
+[ ] users/{uid} Wakil Kurikulum valid dan active=true
+[ ] Migrasi v51 selesai
+[ ] Master students tersinkron
+[ ] Master staffMaster tersinkron
+[ ] Master schedules tersinkron
+[ ] academicPeriods tersinkron
+[ ] Uji write/read Firestore LULUS
+[ ] Uji login Kepala Sekolah LULUS
+[ ] Uji login Wakil Kurikulum LULUS
+[ ] Uji role Guru LULUS
+[ ] Uji role Tenaga Kependidikan LULUS
+[ ] Uji multi-device LULUS
+[ ] Backup terakhir tersedia
+[ ] Rollback plan dipahami
+[ ] Production diaktifkan

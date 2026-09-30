@@ -1,0 +1,11 @@
+# Local/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Never commit service-account or private credentials
+*service-account*.json
+*private-key*
+.env
+.env.*

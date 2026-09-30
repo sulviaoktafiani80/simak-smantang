@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function active() {
+      return signedIn() && profile().active == true;
+    }
+    function roleIs(role) {
+      return active() && profile().role == role;
+    }
+    function isManagement() {
+      return roleIs('Kepala Sekolah') || roleIs('Wakil Kurikulum');
+    }
+    function isStaff() {
+      return isManagement() || roleIs('Guru') || roleIs('Guru Piket') || roleIs('Tenaga Kependidikan');
+    }
+    function isTeachingStaff() {
+      return isManagement() || roleIs('Guru') || roleIs('Guru Piket');
+    }
+    function ownStudent(studentId) {
+      return active() && profile().role == 'Murid' && profile().localId == studentId;
+    }
+    function parentOf(studentId) {
+      return active() && profile().role == 'Orang Tua/Wali' && profile().childId == studentId;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isManagement());
+      allow create, update, delete: if isManagement();
+    }
+
+    match /students/{studentId} {
+      allow read: if isStaff() || ownStudent(studentId) || parentOf(studentId);
+      allow create, update, delete: if isManagement() || roleIs('Tenaga Kependidikan');
+    }
+
+    match /staffMaster/{id} {
+      allow read: if isStaff();
+      allow write: if isManagement() || roleIs('Tenaga Kependidikan');
+    }
+
+    match /academicPeriods/{id} {
+      allow read: if active();
+      allow write: if isManagement();
+    }
+
+    match /schedules/{id} {
+      allow read: if active();
+      allow write: if isManagement();
+    }
+
+    match /announcements/{id} {
+      allow read: if active();
+      allow write: if isManagement();
+    }
+
+    match /systemConfig/{id} {
+      allow read: if active();
+      allow write: if isManagement();
+    }
+
+    match /attendanceRecords/{id} {
+      allow read: if isStaff() || ownStudent(resource.data.studentId) || parentOf(resource.data.studentId);
+      allow create, update: if isTeachingStaff();
+      allow delete: if isManagement();
+    }
+
+    match /assessmentRecords/{id} {
+      allow read: if isStaff() || ownStudent(resource.data.studentId) || parentOf(resource.data.studentId);
+      allow create, update: if isTeachingStaff();
+      allow delete: if isManagement();
+    }
+
+    match /interventionRecords/{id} {
+      allow read: if isStaff() || ownStudent(resource.data.studentId) || parentOf(resource.data.studentId);
+      allow create, update: if isTeachingStaff();
+      allow delete: if isManagement();
+    }
+
+    match /mentoringRecords/{id} {
+      allow read: if isStaff() ||
+        (resource.data.visibility == 'Orang Tua' &&
+          (ownStudent(resource.data.studentId) || parentOf(resource.data.studentId)));
+      allow create, update: if isTeachingStaff();
+      allow delete: if isManagement();
+    }
+
+    match /leaveRequests/{id} {
+      allow read: if isStaff() || ownStudent(resource.data.personId) || parentOf(resource.data.personId);
+      allow create: if active();
+      allow update: if isTeachingStaff();
+      allow delete: if isManagement();
+    }
+
+    match /staffAttendanceRecords/{id} {
+      allow read: if isStaff();
+      allow create, update: if isManagement() || roleIs('Guru Piket');
+      allow delete: if isManagement();
+    }
+
+    match /teachingMonitorRecords/{id} {
+      allow read: if isStaff();
+      allow write: if isManagement() || roleIs('Guru Piket');
+    }
+
+    match /dutyJournalRecords/{id} {
+      allow read: if isStaff();
+      allow write: if isManagement() || roleIs('Guru Piket');
+    }
+
+    match /supervision/{id} {
+      allow read: if isStaff();
+      allow write: if isManagement();
+    }
+
+    match /learningDocuments/{id} {
+      allow read: if isStaff();
+      allow create, update: if isTeachingStaff();
+      allow delete: if isManagement();
+    }
+
+    match /raporIndicators/{id} {
+      allow read: if isStaff();
+      allow write: if isManagement();
+    }
+
+    match /deviceAssessments/{id} {
+      allow read: if isStaff();
+      allow write: if isTeachingStaff();
+    }
+
+    match /curriculumArchives/{id} {
+      allow read: if isStaff();
+      allow write: if isManagement();
+    }
+
+    match /activityPrograms/{id} {
+      allow read: if active();
+      allow write: if isManagement();
+    }
+
+    match /activityParticipants/{id} {
+      allow read: if isStaff();
+      allow write: if isTeachingStaff();
+    }
+
+    match /activityLogs/{id} {
+      allow read: if isStaff();
+      allow write: if isTeachingStaff();
+    }
+
+    match /tkaQuestions/{id} {
+      allow read: if isStaff();
+      allow write: if isTeachingStaff();
+    }
+
+    match /tkaPackages/{id} {
+      allow read: if isStaff();
+      allow write: if isTeachingStaff();
+    }
+
+    match /tkaAttempts/{id} {
+      allow read: if isStaff();
+      allow write: if isTeachingStaff();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
