@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v59.1 - White Screen Bootstrap Fix</title>
+    <title>SIMAK SMANTANG v59.2 - Dynamic Date, Timezone & Server Time Fix</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1536,9 +1536,92 @@ service firebase.storage {
             ['systemConfig','Pengaturan sistem']
         ];
 
+        // === v59.2 DYNAMIC DATE / TIMEZONE ENGINE ===
+        const SIMAK_TIME_ZONE='Asia/Jakarta';
+        const SIMAK_TIME_ZONE_LABEL='WIB';
+
+        const getZonedParts=(date=new Date(),timeZone=SIMAK_TIME_ZONE)=>{
+            const parts=new Intl.DateTimeFormat('en-GB',{
+                timeZone,
+                year:'numeric',month:'2-digit',day:'2-digit',
+                hour:'2-digit',minute:'2-digit',second:'2-digit',
+                hourCycle:'h23'
+            }).formatToParts(date);
+            const out={};
+            parts.forEach(p=>{if(p.type!=='literal') out[p.type]=p.value;});
+            return out;
+        };
+
+        const getJakartaDateKey=(date=new Date())=>{
+            const p=getZonedParts(date);
+            return `${p.year}-${p.month}-${p.day}`;
+        };
+
+        const getJakartaMonthKey=(date=new Date())=>{
+            const p=getZonedParts(date);
+            return `${p.year}-${p.month}`;
+        };
+
+        const getJakartaTimeHHMM=(date=new Date())=>{
+            const p=getZonedParts(date);
+            return `${p.hour}:${p.minute}`;
+        };
+
+        const getJakartaTimeHHMMSS=(date=new Date())=>{
+            const p=getZonedParts(date);
+            return `${p.hour}:${p.minute}:${p.second}`;
+        };
+
+        const getJakartaDayName=(date=new Date())=>
+            new Intl.DateTimeFormat('id-ID',{timeZone:SIMAK_TIME_ZONE,weekday:'long'}).format(date);
+
+        const formatJakartaDate=(date=new Date(),options={})=>
+            new Intl.DateTimeFormat('id-ID',{
+                timeZone:SIMAK_TIME_ZONE,
+                weekday:'long',day:'numeric',month:'long',year:'numeric',
+                ...options
+            }).format(date);
+
+        const formatJakartaDateTime=(date=new Date(),options={})=>
+            new Intl.DateTimeFormat('id-ID',{
+                timeZone:SIMAK_TIME_ZONE,
+                day:'2-digit',month:'short',year:'numeric',
+                hour:'2-digit',minute:'2-digit',hourCycle:'h23',
+                ...options
+            }).format(date);
+
+        const getNextMonthStart=(monthKey)=>{
+            const [y,m]=String(monthKey).split('-').map(Number);
+            if(!y||!m) return '';
+            const next=m===12?{y:y+1,m:1}:{y,m:m+1};
+            return `${next.y}-${String(next.m).padStart(2,'0')}-01`;
+        };
+
+        const addDaysToDateKey=(dateKey,days)=>{
+            const [y,m,d]=String(dateKey).split('-').map(Number);
+            if(!y||!m||!d) return dateKey;
+            const utc=new Date(Date.UTC(y,m-1,d+Number(days||0),12,0,0));
+            return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth()+1).padStart(2,'0')}-${String(utc.getUTCDate()).padStart(2,'0')}`;
+        };
+
+        const dateRangeKeys=(start,end)=>{
+            const out=[];
+            let cur=String(start||'');
+            const finish=String(end||'');
+            let guard=0;
+            while(cur && finish && cur<=finish && guard<370){
+                out.push(cur);
+                cur=addDaysToDateKey(cur,1);
+                guard++;
+            }
+            return out;
+        };
+
         const DEFAULT_SYSTEM_SETTINGS = {
             schoolName:'SMA NEGERI 1 MANTANG',
             schoolVision:'Berkarakter, Maju, dan Berbudaya Lingkungan',
+            timeZone:'Asia/Jakarta',
+            timeZoneLabel:'WIB',
             principalName:'Iwan Muttaqin, S.T., M.Pd.',
             principalNip:'197410142007011013',
             lateCutoff:'07:15',
@@ -1815,7 +1898,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v59.1 • Bootstrap Fix • Stable Realtime • Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v59.2 • Dynamic Date • WIB Timezone • Server Timestamp</span>
                         </div>
                     </div>
                 </div>
@@ -1824,8 +1907,7 @@ service firebase.storage {
 
         const StudentDashboardView = () => {
             const { user, data, setView } = useContext(AppContext);
-            const dayNames = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-            const todayName = dayNames[new Date().getDay()];
+            const todayName = getJakartaDayName();
             const classKey = (user.class || '').replace('-', '.');
             const todaySchedule = data.schedules.filter(item => item.day === todayName).map(item => ({...item, lesson: item[classKey] || '-'}));
             const scheduleToShow = todaySchedule.length ? todaySchedule : data.schedules.filter(item => item.day === 'Senin').slice(0, 4).map(item => ({...item, lesson: item[classKey] || '-'}));
@@ -1928,7 +2010,7 @@ service firebase.storage {
                 (r.visibility === 'Orang Tua' || r.visibility === 'Dibagikan')
             );
             const announcements = (data.announcements || []).filter(a => ['Semua','Murid','Orang Tua/Wali'].includes(a.audience) || String(a.audience||'').includes(child.class));
-            const today = new Date().toISOString().slice(0,10);
+            const today = getJakartaDateKey();
             const todayAttendance = attendance.find(r=>r.date===today);
             const childLeave = (data.leaveRequests||[]).filter(r=>r.personType==='murid'&&r.personId===child.id);
             const pendingLeave = childLeave.filter(r=>r.verificationStatus==='Menunggu').length;
@@ -2023,7 +2105,7 @@ service firebase.storage {
 
         const DutyTeacherDashboardView = () => {
             const { user, data, setView } = useContext(AppContext);
-            const today = new Date().toISOString().slice(0,10);
+            const today = getJakartaDateKey();
             const studentAtt=(data.attendanceRecords||[]).filter(r=>r.date===today);
             const staffAtt=(data.staffAttendanceRecords||[]).filter(r=>r.date===today);
             const teaching=(data.teachingMonitorRecords||[]).filter(r=>r.date===today);
@@ -2080,7 +2162,7 @@ service firebase.storage {
 
         const ExecutiveHeadDashboardView = () => {
             const { data, user, setView, activePeriod } = useContext(AppContext);
-            const today = new Date().toISOString().slice(0,10);
+            const today = getJakartaDateKey();
             const role = normalizeAccessRole(user);
 
             // TODAY DATA
@@ -2796,7 +2878,7 @@ service firebase.storage {
             const canVerify=['Waka Kurikulum','Wakil Kurikulum','Kepala Sekolah'].includes(user?.role);
 
             const handleAddDocument=(newDoc)=>setData(prev=>({...prev,learning_documents:[newDoc,...prev.learning_documents]}));
-            const handleVerification=(docId,status,note)=>{setData(prev=>({...prev,learning_documents:prev.learning_documents.map(d=>d.id===docId?{...d,status,verificationNote:note||'',verifiedBy:user?.name||'-',verifiedDate:new Date().toISOString().split('T')[0]}:d)}));setVerifyDoc(null);};
+            const handleVerification=(docId,status,note)=>{setData(prev=>({...prev,learning_documents:prev.learning_documents.map(d=>d.id===docId?{...d,status,verificationNote:note||'',verifiedBy:user?.name||'-',verifiedDate:getJakartaDateKey()}:d)}));setVerifyDoc(null);};
             const handleSaveAssessment=(record)=>{setData(prev=>({...prev,deviceAssessments:[...(prev.deviceAssessments||[]).filter(a=>a.teacher!==record.teacher),record]}));setAssessTeacher(null);};
             const exportInstrumentCSV=()=>{
                 const rows=[['No','Nama Guru','Mata Pelajaran','Kelas/Fase','Tugas Tambahan','Skor 4','Skor 3','Skor 2','Skor 1','Skor Perolehan','Nilai','Kategori']];
@@ -2849,7 +2931,7 @@ service firebase.storage {
             const total=scoreList.reduce((s,v)=>s+v,0);
             const value=Number(((total/104)*100).toFixed(2));
             const category=value>=91?'Sangat Baik':value>=81?'Baik':value>=71?'Cukup':value>=61?'Kurang':'Sangat Kurang';
-            const save=()=>{if(scoreList.length!==26){if(!confirm(`Baru ${scoreList.length} dari 26 unsur yang dinilai. Simpan sebagai penilaian belum lengkap?`)) return;}onSave({teacher:teacher.name,scores,notes,date:new Date().toISOString().split('T')[0],score:total,value,category:scoreList.length===26?category:'Belum Lengkap Dinilai'});};
+            const save=()=>{if(scoreList.length!==26){if(!confirm(`Baru ${scoreList.length} dari 26 unsur yang dinilai. Simpan sebagai penilaian belum lengkap?`)) return;}onSave({teacher:teacher.name,scores,notes,date:getJakartaDateKey(),score:total,value,category:scoreList.length===26?category:'Belum Lengkap Dinilai'});};
             const comps=[...new Set(items.map(i=>i.component))];
             return <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 z-50"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col"><div className="bg-brand-navy p-5 text-white flex justify-between items-center"><div><h3 className="font-bold">Penilaian Kelengkapan Perangkat Ajar</h3><p className="text-xs text-brand-gold mt-1">{teacher.name} • {subject}</p><p className="text-[10px] text-white/70 mt-1">Kelas/Fase: X, XI, dan XII {task?`• Tugas Tambahan: ${task}`:''}</p></div><button onClick={onClose}><i className="fas fa-times"></i></button></div><div className="p-5 overflow-y-auto space-y-4"><div className="grid grid-cols-2 md:grid-cols-5 gap-3"><div className="bg-gray-50 rounded-xl p-3"><div className="text-[10px] text-gray-500">Unsur Dinilai</div><div className="text-xl font-bold">{scoreList.length}/26</div></div><div className="bg-gray-50 rounded-xl p-3"><div className="text-[10px] text-gray-500">Skor Perolehan</div><div className="text-xl font-bold">{total}/104</div></div><div className="bg-gray-50 rounded-xl p-3"><div className="text-[10px] text-gray-500">Nilai</div><div className="text-xl font-bold text-brand-sea">{value.toFixed(2)}</div></div><div className="bg-gray-50 rounded-xl p-3"><div className="text-[10px] text-gray-500">Kategori</div><div className="text-sm font-bold">{scoreList.length===26?category:'Belum Lengkap'}</div></div><div className="bg-blue-50 rounded-xl p-3 text-[10px] text-blue-800">4 Sangat Lengkap<br/>3 Lengkap<br/>2 Cukup Lengkap<br/>1 Kurang Lengkap</div></div>{comps.map(comp=><div key={comp} className="border rounded-xl overflow-hidden"><div className="bg-gray-100 px-4 py-2 text-xs font-bold text-brand-navy">{comp}</div><div className="divide-y">{items.map((it,i)=>it.component===comp?<div key={it.name} className="grid grid-cols-1 lg:grid-cols-[1fr_220px_1fr] gap-3 p-3 items-center"><div className="text-xs font-medium">{i+1}. {it.name}</div><div className="grid grid-cols-4 gap-1">{[4,3,2,1].map(s=><button key={s} type="button" onClick={()=>setScores(prev=>({...prev,[i]:s}))} className={`py-2 rounded-lg text-xs font-bold border ${Number(scores[i])===s?'bg-brand-sea text-white border-brand-sea':'bg-white text-gray-600 hover:bg-gray-50'}`}>{s}</button>)}</div><input value={notes[i]||''} onChange={e=>setNotes(prev=>({...prev,[i]:e.target.value}))} placeholder="Catatan pemeriksaan (opsional)" className="border rounded-lg p-2 text-xs"/></div>:null)}</div></div>)}</div><div className="p-4 border-t bg-gray-50 flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 border rounded-lg text-sm">Batal</button><button onClick={save} className="px-5 py-2 bg-brand-navy text-white rounded-lg text-sm font-semibold"><i className="fas fa-save mr-2"></i>Simpan Penilaian</button></div></div></div>;
         };
@@ -2881,7 +2963,7 @@ service firebase.storage {
 
             const subjects=['Fisika','Biologi','Matematika','Bahasa Inggris','Bahasa Indonesia','Kimia','Ekonomi','Sosiologi','PJOK','Sejarah','Pendidikan Pancasila','Pendidikan Agama Islam','Prakarya dan Kewirausahaan','Informatika','Seni Budaya','Bimbingan dan Konseling'];
             const handleFileChange=(e)=>{if(e.target.files&&e.target.files[0]){const f=e.target.files[0];if(f.size>25*1024*1024){alert('Ukuran berkas melebihi batas maksimum 25MB.');return;}setSelectedFile(f);}};
-            const makeDoc=(url)=>({id:`doc_${Date.now()}`,teacher:teacherName,subject,class:classRombel,type:docType,status:'Menunggu Verifikasi',progress:100,date:new Date().toISOString().split('T')[0],fileUrl:url,fileName:selectedFile?.name||null,verificationNote:'',verifiedBy:'',verifiedDate:''});
+            const makeDoc=(url)=>({id:`doc_${Date.now()}`,teacher:teacherName,subject,class:classRombel,type:docType,status:'Menunggu Verifikasi',progress:100,date:getJakartaDateKey(),fileUrl:url,fileName:selectedFile?.name||null,verificationNote:'',verifiedBy:'',verifiedDate:''});
             const runSimulatedUpload=()=>{setIsSimulated(true);let p=0;const interval=setInterval(()=>{p+=20;setUploadProgress(p);setStatusMessage(`Mengunggah berkas (${p}%)...`);if(p>=100){clearInterval(interval);setTimeout(()=>{const mockUrl=selectedFile?URL.createObjectURL(selectedFile):'#';setUploading(false);onSuccess(makeDoc(mockUrl));},300);}},150);};
             const handleUpload=async(e)=>{e.preventDefault();if(!selectedFile){alert('Silakan pilih berkas perangkat yang akan diunggah.');return;}setUploading(true);setUploadProgress(0);setStatusMessage('Menghubungkan ke Firebase Storage...');const cfg=getSavedFirebaseConfig();const dummy=cfg.apiKey.includes('DummyKey');if(storageInstance&&!dummy){try{const path=`perangkat/${Date.now()}_${selectedFile.name.replace(/\s+/g,'_')}`;const ref=storageInstance.ref().child(path);const task=ref.put(selectedFile);task.on('state_changed',snap=>{const p=Math.round((snap.bytesTransferred/snap.totalBytes)*100);setUploadProgress(p);setStatusMessage(`Mengunggah ke Firebase Storage (${p}%)...`);},()=>runSimulatedUpload(),async()=>{const url=await task.snapshot.ref.getDownloadURL();setUploading(false);onSuccess(makeDoc(url));});}catch(err){runSimulatedUpload();}}else runSimulatedUpload();};
             return <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"><div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden">
@@ -3362,7 +3444,7 @@ service firebase.storage {
                 e.preventDefault();
                 if (!pForm.title.trim()) return alert('Nama paket wajib diisi.');
                 if (!(pForm.questionIds||[]).length) return alert('Pilih minimal satu soal.');
-                const rec = {...pForm,duration:Number(pForm.duration)||60,id:editingPackage?.id||`tp_${Date.now()}`,createdBy:editingPackage?.createdBy||user?.name||'-',updatedAt:new Date().toISOString()};
+                const rec = {...pForm,duration:Number(pForm.duration)||60,id:editingPackage?.id||`tp_${Date.now()}`,createdBy:editingPackage?.createdBy||user?.name||'-',updatedAtClient:new Date().toISOString()};
                 setData(prev=>({...prev,tkaPackages:editingPackage?(prev.tkaPackages||[]).map(p=>p.id===editingPackage.id?rec:p):[...(prev.tkaPackages||[]),rec]}));
                 resetPForm(); setShowPackageForm(false);
             };
@@ -3710,7 +3792,7 @@ service firebase.storage {
             const { data, setData, user } = useContext(AppContext);
             const [draft, setDraft] = useState({title:'',audience:'Semua',category:'Akademik',content:''});
             const canManage = user.role !== 'Murid';
-            const add = (e) => { e.preventDefault(); if(!draft.title.trim()||!draft.content.trim()) return; setData(prev=>({...prev,announcements:[{...draft,id:`ann_${Date.now()}`,date:new Date().toISOString().slice(0,10)},...prev.announcements]})); setDraft({title:'',audience:'Semua',category:'Akademik',content:''}); };
+            const add = (e) => { e.preventDefault(); if(!draft.title.trim()||!draft.content.trim()) return; setData(prev=>({...prev,announcements:[{...draft,id:`ann_${Date.now()}`,date:getJakartaDateKey()},...prev.announcements]})); setDraft({title:'',audience:'Semua',category:'Akademik',content:''}); };
             return <div className="space-y-6 animate-fade-in"><div><h2 className="text-2xl font-bold text-brand-navy">Pengumuman Akademik</h2><p className="text-sm text-gray-500">Informasi kurikulum, asesmen, TKA, dan kegiatan sekolah.</p></div>{canManage&&<Card title="Buat Pengumuman"><form onSubmit={add} className="grid grid-cols-1 md:grid-cols-4 gap-3"><input className="md:col-span-2 border rounded-lg p-2.5 text-sm" placeholder="Judul pengumuman" value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})}/><select className="border rounded-lg p-2.5 text-sm" value={draft.audience} onChange={e=>setDraft({...draft,audience:e.target.value})}><option>Semua</option><option>Guru</option><option>Kelas X</option><option>Kelas XI</option><option>Kelas XII</option></select><select className="border rounded-lg p-2.5 text-sm" value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})}><option>Akademik</option><option>Kurikulum</option><option>Asesmen</option><option>Kokurikuler</option></select><textarea className="md:col-span-3 border rounded-lg p-2.5 text-sm" rows="2" placeholder="Isi pengumuman" value={draft.content} onChange={e=>setDraft({...draft,content:e.target.value})}></textarea><button className="bg-brand-sea text-white rounded-lg text-sm font-semibold"><i className="fas fa-paper-plane mr-2"></i>Publikasikan</button></form></Card>}<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">{data.announcements.map(a=><Card key={a.id}><div className="flex justify-between gap-3"><div><div className="flex gap-2 mb-2"><span className="text-[10px] font-bold px-2 py-1 rounded bg-brand-sea/10 text-brand-sea">{a.category}</span><span className="text-[10px] font-bold px-2 py-1 rounded bg-brand-gold/20 text-brand-navy">{a.audience}</span></div><h4 className="font-bold text-gray-800">{a.title}</h4><p className="text-sm text-gray-600 mt-2">{a.content}</p><p className="text-[11px] text-gray-400 mt-3"><i className="far fa-calendar mr-1"></i>{a.date}</p></div></div></Card>)}</div></div>;
         };
 
@@ -3782,7 +3864,7 @@ service firebase.storage {
 
             const blank = {
                 category:'Perkembangan Akademik',
-                date:new Date().toISOString().slice(0,10),
+                date:getJakartaDateKey(),
                 status:'Dipantau',
                 summary:'',
                 detail:'',
@@ -3863,7 +3945,7 @@ service firebase.storage {
             const avg=scores.length?(scores.reduce((a,b)=>a+b,0)/scores.length).toFixed(1):'-';
             const valid=assessments.filter(a=>Number.isFinite(Number(a.score))&&Number.isFinite(Number(a.kktp)));
             const mastery=valid.length?Math.round(valid.filter(a=>Number(a.score)>=Number(a.kktp)).length/valid.length*100):null;
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
             const todayAtt=attendance.find(r=>r.date===today);
 
             const openNew=(category)=>{
@@ -3891,7 +3973,7 @@ service firebase.storage {
                     periodId:activePeriod?.id,
                     academicYear:activePeriod?.academicYear,
                     semester:activePeriod?.semester,
-                    updatedAt:new Date().toISOString()
+                    updatedAtClient:new Date().toISOString()
                 };
                 setData(prev=>({
                     ...prev,
@@ -4345,7 +4427,7 @@ service firebase.storage {
 
         const StaffQRAttendanceView = () => {
             const { data, setData, user, activePeriod } = useContext(AppContext);
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
             const [date,setDate]=useState(today);
             const [tab,setTab]=useState('scan');
             const [cutoff,setCutoff]=useState(localStorage.getItem('simak_staff_qr_cutoff')||'07:15');
@@ -4400,7 +4482,7 @@ service firebase.storage {
                 }
 
                 const now=new Date();
-                const time=now.toTimeString().slice(0,5);
+                const time=getJakartaTimeHHMM(now);
                 const status=time>cutoff?'Terlambat':'Hadir';
                 const rec={
                     id:`sa_${date}_${employee.id}`,
@@ -4416,7 +4498,7 @@ service firebase.storage {
                     periodId:activePeriod?.id,
                     academicYear:activePeriod?.academicYear,
                     semester:activePeriod?.semester,
-                    updatedAt:new Date().toISOString()
+                    updatedAtClient:new Date().toISOString()
                 };
 
                 setData(prev=>{
@@ -4566,7 +4648,7 @@ service firebase.storage {
 
         const LeavePermissionCenterView = () => {
             const { data, setData, user, activePeriod } = useContext(AppContext);
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
             const [mode,setMode]=useState('murid');
             const [statusFilter,setStatusFilter]=useState('Semua');
             const [typeFilter,setTypeFilter]=useState('Semua');
@@ -4669,16 +4751,7 @@ service firebase.storage {
                 return 'Izin';
             };
 
-            const daterange=(start,end)=>{
-                const arr=[];
-                let d=new Date(start+'T00:00:00');
-                const e=new Date(end+'T00:00:00');
-                while(d<=e){
-                    arr.push(d.toISOString().slice(0,10));
-                    d.setDate(d.getDate()+1);
-                }
-                return arr;
-            };
+            const daterange=(start,end)=>dateRangeKeys(start,end);
 
             const syncApprovedToAttendance=(req)=>{
                 const dates=daterange(req.startDate,req.endDate);
@@ -4703,7 +4776,7 @@ service firebase.storage {
                                 periodId:activePeriod?.id,
                                 academicYear:activePeriod?.academicYear,
                                 semester:activePeriod?.semester,
-                                updatedAt:new Date().toISOString()
+                                updatedAtClient:new Date().toISOString()
                             };
                             if(req.type==='Pulang Lebih Awal'){
                                 base.earlyLeave=true;
@@ -4734,7 +4807,7 @@ service firebase.storage {
                                 periodId:activePeriod?.id,
                                 academicYear:activePeriod?.academicYear,
                                 semester:activePeriod?.semester,
-                                updatedAt:new Date().toISOString()
+                                updatedAtClient:new Date().toISOString()
                             };
                             if(req.type==='Pulang Lebih Awal'){
                                 base.earlyLeave=true;
@@ -4909,7 +4982,7 @@ service firebase.storage {
 
         const CheckInOutQRView = () => {
             const { data, setData, user, activePeriod } = useContext(AppContext);
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
 
             const [mode,setMode]=useState('murid');
             const [action,setAction]=useState('checkin');
@@ -4993,7 +5066,11 @@ service firebase.storage {
                     if(!person) throw new Error('Pemilik token tidak ditemukan pada data aktif.');
 
                     const now=new Date();
-                    const time=now.toTimeString().slice(0,5);
+                    const time=getJakartaTimeHHMM(now);
+                    const actualDate=getJakartaDateKey(now);
+                    if(date!==actualDate){
+                        throw new Error(`Tanggal scan harus tanggal hari ini (${actualDate} WIB).`);
+                    }
                     const docId=`${mode==='murid'?'att':'sa'}_${date}_${personId(person)}`;
                     const ref=firestoreInstance.collection(recordsKey).doc(docId);
                     let savedRec=null;
@@ -5026,7 +5103,7 @@ service firebase.storage {
                                 periodId:activePeriod?.id,
                                 academicYear:activePeriod?.academicYear,
                                 semester:activePeriod?.semester,
-                                updatedAt:new Date().toISOString()
+                                updatedAtClient:new Date().toISOString()
                             };
                         }else{
                             if(!existing?.checkInTime) throw new Error(`${personName(person)} belum check-in.`);
@@ -5045,10 +5122,17 @@ service firebase.storage {
                                 note:[existing.note,`Secure QR check-out ${time}${early?' (Pulang Lebih Awal)':''}`].filter(Boolean).join(' | '),
                                 qrTokenVersion:55,
                                 qrTokenHash:resolved.tokenHash,
-                                updatedAt:new Date().toISOString()
+                                updatedAtClient:new Date().toISOString()
                             };
                         }
-                        tx.set(ref,savedRec,{merge:true});
+                        const cloudRec={
+                            ...savedRec,
+                            serverUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                            ...(action==='checkin'
+                                ? {checkInAt:firebase.firestore.FieldValue.serverTimestamp()}
+                                : {checkOutAt:firebase.firestore.FieldValue.serverTimestamp()})
+                        };
+                        tx.set(ref,cloudRec,{merge:true});
                     });
 
                     setData(prev=>{
@@ -5136,9 +5220,9 @@ service firebase.storage {
 
             return <div className="space-y-6 animate-fade-in">
                 <div className="bg-gradient-to-r from-brand-navy to-brand-sea rounded-2xl p-6 text-white shadow-md">
-                    <p className="text-xs uppercase tracking-widest text-brand-gold font-bold">SECURE QR ATTENDANCE • v55</p>
+                    <p className="text-xs uppercase tracking-widest text-brand-gold font-bold">SECURE QR ATTENDANCE • v59.2</p>
                     <h2 className="text-2xl font-bold mt-1">Secure Check-in & Check-out QR Murid dan Pegawai</h2>
-                    <p className="text-sm text-white/75 mt-1">Jam Masuk • Jam Pulang • Terlambat • Pulang Lebih Awal • Durasi Kehadiran</p>
+                    <p className="text-sm text-white/75 mt-1">Jam Masuk • Jam Pulang • Terlambat • Pulang Lebih Awal • Durasi Kehadiran • WIB / Server Timestamp</p>
                 </div>
 
                 <Card>
@@ -5476,7 +5560,7 @@ service firebase.storage {
 
         const QRAttendanceRecapView = () => {
             const { data, activePeriod } = useContext(AppContext);
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
             const firstOfMonth=today.slice(0,8)+'01';
 
             const [mode,setMode]=useState('murid');
@@ -5491,11 +5575,10 @@ service firebase.storage {
                 const now=new Date();
                 if(range==='hari') return {start:today,end:today};
                 if(range==='minggu'){
-                    const d=new Date(now); const day=d.getDay()||7;
-                    d.setDate(d.getDate()-day+1);
-                    const start=d.toISOString().slice(0,10);
-                    const e=new Date(d);e.setDate(e.getDate()+6);
-                    return {start,end:e.toISOString().slice(0,10)};
+                    const weekday=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'].indexOf(getJakartaDayName(now));
+                    const isoDay=weekday===0?7:weekday;
+                    const start=addDaysToDateKey(getJakartaDateKey(now),-(isoDay-1));
+                    return {start,end:addDaysToDateKey(start,6)};
                 }
                 if(range==='bulan') return {start:firstOfMonth,end:today};
                 if(range==='semester'){
@@ -5754,7 +5837,7 @@ service firebase.storage {
 
         const StaffAttendanceView = () => {
             const { data, setData, user } = useContext(AppContext);
-            const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+            const [date,setDate]=useState(getJakartaDateKey());
             const existing=(data.staffAttendanceRecords||[]).filter(r=>r.date===date);
             const [entries,setEntries]=useState({});
             useEffect(()=>{
@@ -5782,7 +5865,7 @@ service firebase.storage {
 
         const TeachingMonitorView = () => {
             const { data, setData, user } = useContext(AppContext);
-            const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+            const [date,setDate]=useState(getJakartaDateKey());
             const dayNames=['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
             const day=dayNames[new Date(date+'T00:00:00').getDay()];
             const slots=(data.schedules||[]).filter(s=>s.day===day);
@@ -5826,13 +5909,13 @@ service firebase.storage {
 
         const DutyJournalView = () => {
             const { data, setData, user } = useContext(AppContext);
-            const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+            const [date,setDate]=useState(getJakartaDateKey());
             const existing=(data.dutyJournalRecords||[]).find(r=>r.date===date);
             const blank={generalCondition:'',lateStudents:'',sickStudents:'',absentTeachers:'',emptyClasses:'',specialEvents:'',discipline:'',guests:'',schoolActivities:'',followUp:'',reportTo:'',status:'Aktif'};
             const [form,setForm]=useState(blank);
             useEffect(()=>setForm(existing?{...blank,...existing}:blank),[date,data.dutyJournalRecords]);
             const save=(close=false)=>{
-                const rec={...form,id:existing?.id||`dj_${date}`,date,dutyTeacher:user.name,status:close?'Ditutup':'Aktif',updatedAt:new Date().toISOString()};
+                const rec={...form,id:existing?.id||`dj_${date}`,date,dutyTeacher:user.name,status:close?'Ditutup':'Aktif',updatedAtClient:new Date().toISOString()};
                 setData(prev=>({...prev,dutyJournalRecords:existing?(prev.dutyJournalRecords||[]).map(r=>r.id===existing.id?rec:r):[rec,...(prev.dutyJournalRecords||[])]}));
                 alert(close?'Piket hari ini ditutup.':'Jurnal piket tersimpan.');
             };
@@ -5994,7 +6077,7 @@ service firebase.storage {
                 ...n
             });
 
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
 
             // ABSENSI MURID
             const attendance=data.attendanceRecords||[];
@@ -6208,7 +6291,7 @@ service firebase.storage {
                 // Parent: missing check-in / check-out only after reasonable local thresholds
                 if(isParent){
                     const now=new Date();
-                    const hhmm=now.toTimeString().slice(0,5);
+                    const hhmm=getJakartaTimeHHMM(now);
                     const noCheckinAlert=getSystemSettings().parentNoCheckinAlert;
                     const checkoutAlert=getSystemSettings().parentCheckoutAlert;
 
@@ -6890,7 +6973,7 @@ service firebase.storage {
 
         const QRAttendanceView = () => {
             const { data, setData, user, activePeriod } = useContext(AppContext);
-            const today=new Date().toISOString().slice(0,10);
+            const today=getJakartaDateKey();
             const [date,setDate]=useState(today);
             const [selectedClass,setSelectedClass]=useState('Semua');
             const [tab,setTab]=useState('scan');
@@ -6937,7 +7020,7 @@ service firebase.storage {
                     setMessage({type:'warning',text:`${student.name} sudah tercatat ${duplicate.status}${duplicate.checkInTime?' pukul '+duplicate.checkInTime:''}.`}); beep(false); return;
                 }
                 const now=new Date();
-                const time=now.toTimeString().slice(0,5);
+                const time=getJakartaTimeHHMM(now);
                 const status=time>cutoff?'Terlambat':'Hadir';
                 const rec={
                     id:`att_${date}_${student.class}_${student.id}`,
@@ -6956,7 +7039,7 @@ service firebase.storage {
                     periodId:activePeriod?.id,
                     academicYear:activePeriod?.academicYear,
                     semester:activePeriod?.semester,
-                    updatedAt:new Date().toISOString()
+                    updatedAtClient:new Date().toISOString()
                 };
                 setData(prev=>{
                     const current=prev.attendanceRecords||[];
@@ -7105,7 +7188,7 @@ service firebase.storage {
 
         const AttendanceView = () => {
             const { data, setData, user } = useContext(AppContext);
-            const today = new Date().toISOString().slice(0,10);
+            const today = getJakartaDateKey();
             const [selectedDate, setSelectedDate] = useState(today);
             const [selectedClass, setSelectedClass] = useState('X.1');
             const [draft, setDraft] = useState({});
@@ -7144,7 +7227,7 @@ service firebase.storage {
                     id:`att_${selectedDate}_${selectedClass}_${s.id}`,
                     date:selectedDate,className:selectedClass,studentId:s.id,studentName:s.name,
                     status:(draft[s.id]||{}).status || 'Hadir',note:(draft[s.id]||{}).note || '',
-                    guruWali:s.guruWali,waliKelas:s.waliKelas,recordedBy:user.name,updatedAt:new Date().toISOString()
+                    guruWali:s.guruWali,waliKelas:s.waliKelas,recordedBy:user.name,updatedAtClient:new Date().toISOString()
                 }));
                 setData(prev => ({...prev, attendanceRecords:[...fresh,...created]}));
                 alert(`Absensi ${selectedClass} tanggal ${selectedDate} tersimpan untuk ${created.length} murid.`);
@@ -7196,7 +7279,7 @@ service firebase.storage {
 
         const AttendanceReportView = () => {
             const { data } = useContext(AppContext);
-            const currentMonth = new Date().toISOString().slice(0,7);
+            const currentMonth = getJakartaMonthKey();
             const [periodType, setPeriodType] = useState('Bulanan');
             const [selectedMonth, setSelectedMonth] = useState(currentMonth);
             const [selectedSemester, setSelectedSemester] = useState('Ganjil 2026/2027');
@@ -7316,7 +7399,7 @@ service firebase.storage {
             const [subject, setSubject] = useState('Fisika');
             const [type, setType] = useState('Formatif');
             const [title, setTitle] = useState('');
-            const [date, setDate] = useState(new Date().toISOString().slice(0,10));
+            const [date, setDate] = useState(getJakartaDateKey());
             const [kktp, setKktp] = useState(75);
             const [scores, setScores] = useState({});
             const [filterSubject, setFilterSubject] = useState('Semua');
@@ -7358,7 +7441,7 @@ service firebase.storage {
                 const rows=[['Nama Murid','Kelas','Guru Wali','Mata Pelajaran','Jenis','Asesmen','Tanggal','KKTP','Nilai','Status','Guru Penginput']];
                 filteredRecords.forEach(r=>rows.push([r.studentName,r.class,r.guruWali,r.subject,r.type,r.title,r.date,r.kktp,r.score,r.status,r.teacher]));
                 const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
-                const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`rekap_nilai_${reportClass}_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
+                const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`rekap_nilai_${reportClass}_${getJakartaDateKey()}.csv`; a.click(); URL.revokeObjectURL(a.href);
             };
             const assessmentBatches = Array.from(new Map(filteredRecords.map(r=>[r.batchId,{batchId:r.batchId,title:r.title,subject:r.subject,type:r.type,date:r.date,class:r.class,kktp:r.kktp,teacher:r.teacher}])).values());
             const studentSummary = data.students.filter(s=>reportClass==='Semua'||s.class===reportClass).map(s=>{
@@ -7415,7 +7498,7 @@ service firebase.storage {
             const [subject, setSubject] = useState('Semua');
             const [query, setQuery] = useState('');
             const [selectedAssessment, setSelectedAssessment] = useState(null);
-            const [draft, setDraft] = useState({date:new Date().toISOString().slice(0,10), strategy:'Pembelajaran ulang terbimbing', finalScore:'', note:'', followUp:'', status:'Dalam Proses'});
+            const [draft, setDraft] = useState({date:getJakartaDateKey(), strategy:'Pembelajaran ulang terbimbing', finalScore:'', note:'', followUp:'', status:'Dalam Proses'});
             const subjects = Array.from(new Set((data.assessmentRecords || []).map(r=>r.subject))).sort();
             const interventions = data.interventionRecords || [];
             const rawAssessments = (data.assessmentRecords || []).filter(r=>{
@@ -7441,7 +7524,7 @@ service firebase.storage {
             const openForm = (r) => {
                 setSelectedAssessment(r);
                 const existing = interventions.filter(x=>x.assessmentId===r.id && x.mode===mode).sort((a,b)=>(b.updatedAt||b.createdAt||'').localeCompare(a.updatedAt||a.createdAt||''))[0];
-                setDraft(existing ? {date:existing.date||new Date().toISOString().slice(0,10), strategy:existing.strategy||'', finalScore:existing.finalScore??'', note:existing.note||'', followUp:existing.followUp||'', status:existing.status||'Dalam Proses'} : {date:new Date().toISOString().slice(0,10), strategy:mode==='Remedial'?'Pembelajaran ulang terbimbing':'Tugas pengayaan/proyek lanjutan', finalScore:mode==='Remedial'?'':r.score, note:'', followUp:'', status:'Dalam Proses'});
+                setDraft(existing ? {date:existing.date||getJakartaDateKey(), strategy:existing.strategy||'', finalScore:existing.finalScore??'', note:existing.note||'', followUp:existing.followUp||'', status:existing.status||'Dalam Proses'} : {date:getJakartaDateKey(), strategy:mode==='Remedial'?'Pembelajaran ulang terbimbing':'Tugas pengayaan/proyek lanjutan', finalScore:mode==='Remedial'?'':r.score, note:'', followUp:'', status:'Dalam Proses'});
             };
             const save = (e) => {
                 e.preventDefault();
@@ -7450,7 +7533,7 @@ service firebase.storage {
                 if (mode==='Remedial' && (!Number.isFinite(score) || score<0 || score>100)) { alert('Nilai remedial harus 0-100.'); return; }
                 const status = draft.status === 'Selesai' ? 'Selesai' : 'Dalam Proses';
                 const id = `int_${selectedAssessment.id}_${mode}`;
-                const record = {id, assessmentId:selectedAssessment.id, batchId:selectedAssessment.batchId, studentId:selectedAssessment.studentId, studentName:selectedAssessment.studentName, class:selectedAssessment.class, guruWali:selectedAssessment.guruWali, subject:selectedAssessment.subject, assessmentTitle:selectedAssessment.title, assessmentType:selectedAssessment.type, originalScore:Number(selectedAssessment.score), kktp:Number(selectedAssessment.kktp||75), mode, date:draft.date, strategy:draft.strategy, finalScore:mode==='Remedial'?score:Number(selectedAssessment.score), note:draft.note, followUp:draft.followUp, status, teacher:user.name, updatedAt:new Date().toISOString(), createdAt:new Date().toISOString()};
+                const record = {id, assessmentId:selectedAssessment.id, batchId:selectedAssessment.batchId, studentId:selectedAssessment.studentId, studentName:selectedAssessment.studentName, class:selectedAssessment.class, guruWali:selectedAssessment.guruWali, subject:selectedAssessment.subject, assessmentTitle:selectedAssessment.title, assessmentType:selectedAssessment.type, originalScore:Number(selectedAssessment.score), kktp:Number(selectedAssessment.kktp||75), mode, date:draft.date, strategy:draft.strategy, finalScore:mode==='Remedial'?score:Number(selectedAssessment.score), note:draft.note, followUp:draft.followUp, status, teacher:user.name, updatedAtClient:new Date().toISOString(), createdAt:new Date().toISOString()};
                 setData(prev=>{
                     const old=(prev.interventionRecords||[]).filter(x=>x.id!==id);
                     const mentoring = status==='Selesai' ? [{id:`gw_auto_${Date.now()}`, studentId:record.studentId, studentName:record.studentName, class:record.class, guruWali:record.guruWali, date:record.date, category:'Perkembangan Akademik', summary:`${mode}: ${record.subject} - ${record.assessmentTitle}`, detail:mode==='Remedial'?`Nilai awal ${record.originalScore}, nilai remedial ${record.finalScore}, KKTP ${record.kktp}.`:`Pengayaan dilaksanakan setelah murid mencapai KKTP ${record.kktp}.`, status:mode==='Remedial'?(record.finalScore>=record.kktp?'Selesai':'Perlu Tindak Lanjut'):'Selesai', followUp:record.followUp||record.note||'-', channel:'Tatap Muka', createdBy:user.name, createdAt:new Date().toISOString()}, ...(prev.mentoringRecords||[])] : (prev.mentoringRecords||[]);
@@ -7464,7 +7547,7 @@ service firebase.storage {
                 const rows=[['Mode','Nama Murid','Kelas','Guru Wali','Mata Pelajaran','Asesmen','Nilai Awal','KKTP','Nilai Akhir','Tanggal','Strategi','Status','Tindak Lanjut','Guru']];
                 interventions.forEach(x=>rows.push([x.mode,x.studentName,x.class,x.guruWali,x.subject,x.assessmentTitle,x.originalScore,x.kktp,x.finalScore,x.date,x.strategy,x.status,x.followUp,x.teacher]));
                 const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
-                const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`remedial_pengayaan_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
+                const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`remedial_pengayaan_${getJakartaDateKey()}.csv`; a.click(); URL.revokeObjectURL(a.href);
             };
             return <div className="space-y-6 animate-fade-in">
                 <div className="bg-gradient-to-r from-brand-navy to-brand-sea rounded-2xl p-6 text-white shadow-md bg-malay-pattern flex flex-col lg:flex-row justify-between gap-4">
@@ -7631,7 +7714,7 @@ service firebase.storage {
             const [query, setQuery] = useState('');
             const [showForm, setShowForm] = useState(false);
             const [editing, setEditing] = useState(null);
-            const [form, setForm] = useState({category:'KSP & Kurikulum',title:'',academicYear:'2026/2027',version:'1.0',status:'Aktif',owner:user?.name || '',date:new Date().toISOString().slice(0,10),fileName:'',fileUrl:'',notes:''});
+            const [form, setForm] = useState({category:'KSP & Kurikulum',title:'',academicYear:'2026/2027',version:'1.0',status:'Aktif',owner:user?.name || '',date:getJakartaDateKey(),fileName:'',fileUrl:'',notes:''});
 
             const filtered = useMemo(() => archives.filter(a => {
                 const q = query.toLowerCase();
@@ -7648,7 +7731,7 @@ service firebase.storage {
 
             const resetForm = () => {
                 setEditing(null);
-                setForm({category:'KSP & Kurikulum',title:'',academicYear:'2026/2027',version:'1.0',status:'Aktif',owner:user?.name || '',date:new Date().toISOString().slice(0,10),fileName:'',fileUrl:'',notes:''});
+                setForm({category:'KSP & Kurikulum',title:'',academicYear:'2026/2027',version:'1.0',status:'Aktif',owner:user?.name || '',date:getJakartaDateKey(),fileName:'',fileUrl:'',notes:''});
                 setShowForm(false);
             };
             const saveArchive = (e) => {
@@ -7757,7 +7840,7 @@ service firebase.storage {
             const [editingProgram, setEditingProgram] = useState(null);
             const [programForm, setProgramForm] = useState({name:'',type:'Kokurikuler',semester:'Ganjil',coordinator:'',schedule:'',target:'',status:'Aktif',description:''});
             const [participantForm, setParticipantForm] = useState({studentId:'',status:'Aktif',score:'',predicate:'',notes:''});
-            const [logForm, setLogForm] = useState({date:new Date().toISOString().slice(0,10),title:'',achievement:'',evidenceUrl:'',notes:''});
+            const [logForm, setLogForm] = useState({date:getJakartaDateKey(),title:'',achievement:'',evidenceUrl:'',notes:''});
 
             const selectedProgram = programs.find(p => p.id === selectedProgramId) || programs[0] || null;
             const filteredPrograms = useMemo(() => programs.filter(p => {
@@ -7833,7 +7916,7 @@ service firebase.storage {
                 if (!logForm.title.trim()) return alert('Judul kegiatan/dokumentasi wajib diisi.');
                 const rec = {id:`alog_${Date.now()}`, programId:selectedProgram.id, createdBy:user?.name || '-', ...logForm};
                 setData(prev => ({...prev, activityLogs:[rec, ...(prev.activityLogs||[])]}));
-                setLogForm({date:new Date().toISOString().slice(0,10),title:'',achievement:'',evidenceUrl:'',notes:''});
+                setLogForm({date:getJakartaDateKey(),title:'',achievement:'',evidenceUrl:'',notes:''});
             };
 
             const deleteLog = (id) => {
@@ -8055,7 +8138,7 @@ service firebase.storage {
 
 
         // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
-        const REALTIME_ENGINE_VERSION='59.1';
+        const REALTIME_ENGINE_VERSION='59.2';
         const realtimeLocalWriteRegistry = new Map();
 
         const registerRealtimeLocalWrite=(collectionName,docId)=>{
@@ -8317,7 +8400,7 @@ service firebase.storage {
         const formatMonitorDate = (v) => {
             const d=tsToDate(v);
             if(!d) return '-';
-            return d.toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});
+            return formatJakartaDateTime(d);
         };
 
         const V51_MIGRATION_COLLECTION_KEYS = [
@@ -9133,7 +9216,7 @@ service firebase.storage {
                 const esc=v=>`"${String(v??'').replaceAll('"','""')}"`;
                 const lines=[fields.join(',')];
                 filtered.forEach(a=>{const row={...a,lastLoginAt:formatMonitorDate(a.lastLoginAt),lastSeenAt:formatMonitorDate(a.lastSeenAt)};lines.push(fields.map(f=>esc(row[f])).join(','));});
-                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AKUN_PRODUCTION_${new Date().toISOString().slice(0,10)}.csv`,'text/csv;charset=utf-8');
+                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AKUN_PRODUCTION_${getJakartaDateKey()}.csv`,'text/csv;charset=utf-8');
                 writeAuditLog({action:'EXPORT',module:'Manajemen Akun',collection:'users',documentId:'*',detail:`Ekspor ${filtered.length} akun`});
             };
             const toggleSelect=(uid)=>setSelected(prev=>{const n=new Set(prev);n.has(uid)?n.delete(uid):n.add(uid);return n;});
@@ -9141,7 +9224,7 @@ service firebase.storage {
 
             return <div className="space-y-6 animate-fade-in">
                 <div className="bg-gradient-to-r from-brand-navy via-blue-900 to-brand-sea rounded-2xl p-6 text-white shadow-lg">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-brand-gold">ACCOUNT SECURITY • v56</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-brand-gold">ACCOUNT SECURITY • v59.2</p>
                     <h2 className="text-2xl md:text-3xl font-bold mt-2">Manajemen Akun & Reset Password Production</h2>
                     <p className="text-sm text-white/75 mt-1">Firebase Authentication • Akses SIMAK • Password Recovery • Audit</p>
                 </div>
@@ -9308,7 +9391,7 @@ service firebase.storage {
                     const row={...r,createdAt:formatMonitorDate(r.createdAt||r.clientTime)};
                     lines.push(fields.map(f=>esc(row[f])).join(','));
                 });
-                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AUDIT_LOG_${new Date().toISOString().slice(0,10)}.csv`,'text/csv;charset=utf-8');
+                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AUDIT_LOG_${getJakartaDateKey()}.csv`,'text/csv;charset=utf-8');
                 writeAuditLog({action:'EXPORT',module:'Production Monitoring',collection:AUDIT_COLLECTION,documentId:'*',detail:`Ekspor ${filteredAudits.length} audit log`});
             };
 
@@ -9320,7 +9403,7 @@ service firebase.storage {
                     const row={...r,lastLoginAt:formatMonitorDate(r.lastLoginAt),lastSeenAt:formatMonitorDate(r.lastSeenAt)};
                     lines.push(fields.map(f=>esc(row[f])).join(','));
                 });
-                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AKTIVITAS_AKUN_${new Date().toISOString().slice(0,10)}.csv`,'text/csv;charset=utf-8');
+                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AKTIVITAS_AKUN_${getJakartaDateKey()}.csv`,'text/csv;charset=utf-8');
             };
 
             return <div className="space-y-6 animate-fade-in">
@@ -9663,7 +9746,7 @@ service firebase.storage {
             }));
             const totalSelected=collectionRows.filter(r=>selected[r.key]).reduce((s,r)=>s+r.count,0);
 
-            const log=(msg,type='info')=>setMigrationLog(prev=>[...prev,{time:new Date().toLocaleTimeString('id-ID'),msg,type}]);
+            const log=(msg,type='info')=>setMigrationLog(prev=>[...prev,{time:getJakartaTimeHHMMSS(),msg,type}]);
 
             const refreshRuntime=()=>setRuntime(getFirebaseRuntimeStatus());
 
@@ -10232,7 +10315,7 @@ service firebase.storage {
                     ewsBelowKKTPThreshold:Math.max(1,Number(settings.ewsBelowKKTPThreshold)||2),
                     ewsHighScore:Math.max(1,Number(settings.ewsHighScore)||6),
                     ewsFollowScore:Math.max(1,Number(settings.ewsFollowScore)||3),
-                    updatedAt:new Date().toISOString(),
+                    updatedAtClient:new Date().toISOString(),
                     updatedBy:user?.name||''
                 };
                 saveSystemSettings(normalized);
@@ -10243,7 +10326,7 @@ service firebase.storage {
 
             const resetDefaults=()=>{
                 if(!confirm('Kembalikan seluruh pengaturan sistem ke nilai default prototype?')) return;
-                const reset={...DEFAULT_SYSTEM_SETTINGS,updatedAt:new Date().toISOString(),updatedBy:user?.name||''};
+                const reset={...DEFAULT_SYSTEM_SETTINGS,updatedAtClient:new Date().toISOString(),updatedBy:user?.name||''};
                 saveSystemSettings(reset);
                 setSettings(reset);
                 setSavedMessage('Pengaturan dikembalikan ke nilai default.');
@@ -10354,16 +10437,11 @@ service firebase.storage {
 
         const MonthlyHeadReportView = () => {
             const { data, user, activePeriod } = useContext(AppContext);
-            const now=new Date();
-            const [month,setMonth]=useState(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+            const [month,setMonth]=useState(()=>getJakartaMonthKey());
             const [classFilter,setClassFilter]=useState('Semua');
 
             const monthStart=`${month}-01`;
-            const nextMonth=(()=>{
-                const [y,m]=month.split('-').map(Number);
-                const d=new Date(y,m,1);
-                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
-            })();
+            const nextMonth=getNextMonthStart(month);
             const inMonth=(date)=>date && String(date)>=monthStart && String(date)<nextMonth;
 
             const students=data.students||[];
@@ -10957,6 +11035,11 @@ service firebase.storage {
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
             const [menuSearch, setMenuSearch] = useState('');
             const [compactMenu,setCompactMenu] = useState(false);
+            const [wibClock,setWibClock]=useState(()=>new Date());
+            useEffect(()=>{
+                const timer=setInterval(()=>setWibClock(new Date()),30000);
+                return ()=>clearInterval(timer);
+            },[]);
             const [realtimeToast,setRealtimeToast]=useState(null);
             useEffect(()=>{
                 const handler=(e)=>{
@@ -11245,21 +11328,28 @@ service firebase.storage {
                                             ? (studentNavItems.find(i=>i.id===view)?.label || 'Beranda')
                                             : (staffNavItems.find(i=>i.id===view)?.label || 'Dashboard'))}
                                 </span>
-                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v59.1</span>
+                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v59.2</span>
                             </div>
-                            <span className="text-[10px] px-3 py-1.5 rounded-full bg-white border text-gray-500 shadow-sm">
-                                {user?.role}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <div className="text-right hidden lg:block">
+                                    <div className="text-[10px] font-bold text-brand-navy">{formatJakartaDate(wibClock)}</div>
+                                    <div className="text-[9px] text-gray-400">{getJakartaTimeHHMM(wibClock)} WIB • Asia/Jakarta</div>
+                                </div>
+                                <span className="text-[10px] px-3 py-1.5 rounded-full bg-white border text-gray-500 shadow-sm">
+                                    {user?.role}
+                                </span>
+                            </div>
                         </div>
                         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white px-3.5 py-2.5 shadow-sm">
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
                                 <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v59.1</span>
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v59.2</span>
                                 <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
+                                <span className="hidden md:inline text-gray-400">• WIB</span>
                             </div>
                             <div className="text-[10px] text-gray-400">
-                                {realtimeStatus?.lastUpdate?`Update ${new Date(realtimeStatus.lastUpdate).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`:'Menunggu perubahan'}
+                                {realtimeStatus?.lastUpdate?`Update ${getJakartaTimeHHMMSS(new Date(realtimeStatus.lastUpdate))} WIB`:'Menunggu perubahan'}
                             </div>
                         </div>
                         {children}
@@ -11722,7 +11812,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','59.1');
+                    localStorage.setItem('simak_schema_version','59.2');
                 }catch(e){}
             },[rawData]);
 
@@ -11760,7 +11850,7 @@ service firebase.storage {
             }
 
             if(authLoading){
-                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v59.1</p></div></div>;
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v59.2</p></div></div>;
             }
 
             if(!user){
