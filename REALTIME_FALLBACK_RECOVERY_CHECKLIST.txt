@@ -1,0 +1,13 @@
+SIMAK SMANTANG v57.3 — RECOVERY CHECKLIST
+
+[ ] Badge v57.3 tampil
+[ ] Manajemen Akun kembali berisi data
+[ ] Total Akun = 166
+[ ] Sumber awal Initial Load / Firestore get()
+[ ] Sumber kemudian Realtime Firestore
+[ ] Recovery Load bekerja
+[ ] Snapshot/error realtime tidak mengosongkan tabel
+[ ] Status Realtime LIVE
+[ ] Listener > 0
+[ ] Perubahan perangkat A muncul otomatis di B
+[ ] Secure QR tetap realtime lintas perangkat

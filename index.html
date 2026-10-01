@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v57.2 - Realtime Startup & Listener Recovery Fix</title>
+    <title>SIMAK SMANTANG v57.3 - Realtime Fallback & Account Data Recovery Fix</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1732,7 +1732,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v57.2 • Realtime Startup Fix • Listener Recovery • Firebase Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v57.3 • Realtime Fallback • Account Recovery • Firebase Production</span>
                         </div>
                     </div>
                 </div>
@@ -7936,7 +7936,7 @@ service firebase.storage {
 
 
         // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
-        const REALTIME_ENGINE_VERSION='57.2';
+        const REALTIME_ENGINE_VERSION='57.3';
         const realtimeLocalWriteRegistry = new Map();
 
         const registerRealtimeLocalWrite=(collectionName,docId)=>{
@@ -8744,83 +8744,166 @@ service firebase.storage {
             const [loginFilter,setLoginFilter]=useState('Semua');
             const [selected,setSelected]=useState(new Set());
             const [message,setMessage]=useState(null);
+            const [accountSource,setAccountSource]=useState('Belum dimuat');
+            const [accountError,setAccountError]=useState('');
+            const [lastSuccessfulLoad,setLastSuccessfulLoad]=useState(null);
             const canManage=['Kepala Sekolah','Wakil Kurikulum'].includes(normalizeAccessRole(user));
 
-            const loadAccounts=async()=>{
-                if(!firestoreInstance) return;
-                setLoading(true);
+            const loadAccounts=async({silent=false}={})=>{
+                if(!firestoreInstance){
+                    setAccountError('Firestore belum siap. Sistem akan mencoba kembali otomatis.');
+                    return false;
+                }
+                if(!silent) setLoading(true);
                 try{
                     const userSnap=await firestoreInstance.collection('users').get();
-                    let reqDocs=[];
+                    const rows=userSnap.docs.map(d=>({uid:d.id,...d.data()}));
+                    if(rows.length>0){
+                        setAccounts(rows);
+                        setAccountSource('Initial Load / Firestore get()');
+                        setLastSuccessfulLoad(new Date().toISOString());
+                        setAccountError('');
+                    }else{
+                        setAccountError('Collection users terbaca 0 dokumen. Data terakhir tidak dihapus.');
+                    }
+
                     try{
-                        const reqSnap=await firestoreInstance.collection('accountAdminRequests').orderBy('createdAt','desc').limit(200).get();
-                        reqDocs=reqSnap.docs;
-                    }catch(e){reqDocs=[];}
-                    setAccounts(userSnap.docs.map(d=>({uid:d.id,...d.data()})));
-                    setRequests(reqDocs.map(d=>({id:d.id,...d.data()})));
+                        const reqSnap=await firestoreInstance.collection('accountAdminRequests')
+                            .orderBy('createdAt','desc').limit(200).get();
+                        setRequests(reqSnap.docs.map(d=>({id:d.id,...d.data()})));
+                    }catch(reqErr){
+                        console.warn('Initial accountAdminRequests load gagal',reqErr);
+                    }
+                    return true;
                 }catch(e){
-                    setMessage({type:'error',text:`Gagal memuat akun: ${e.code||''} ${e.message||e}`});
-                }finally{setLoading(false);}
+                    const text=`${e.code||''} ${e.message||e}`.trim();
+                    setAccountError(text);
+                    setMessage({type:'error',text:`Gagal memuat akun dari Firestore: ${text}`});
+                    return false;
+                }finally{
+                    if(!silent) setLoading(false);
+                }
             };
+
             useEffect(()=>{
                 let alive=true;
                 let unsubUsers=null;
                 let unsubRequests=null;
                 let retryTimer=null;
+                let startupTimer=null;
+                let attached=false;
+                let lastRows=[];
 
-                const attach=()=>{
+                const preserveAndSet=(rows,source)=>{
+                    if(!alive) return;
+                    if(Array.isArray(rows) && rows.length>0){
+                        lastRows=rows;
+                        setAccounts(rows);
+                        setAccountSource(source);
+                        setLastSuccessfulLoad(new Date().toISOString());
+                        setAccountError('');
+                    }else{
+                        setAccountError('Snapshot users kosong/transien. Data valid terakhir tetap dipertahankan.');
+                        if(lastRows.length) setAccounts(lastRows);
+                    }
+                };
+
+                const attachRealtime=()=>{
+                    if(!alive || attached) return;
+                    if(!firestoreInstance){
+                        retryTimer=setTimeout(attachRealtime,1000);
+                        return;
+                    }
+                    attached=true;
+
+                    try{
+                        unsubUsers=firestoreInstance.collection('users').onSnapshot(
+                            {includeMetadataChanges:true},
+                            snap=>{
+                                if(!alive) return;
+                                const rows=snap.docs.map(d=>({uid:d.id,...d.data()}));
+                                preserveAndSet(rows,snap.metadata?.fromCache?'Realtime Cache':'Realtime Firestore');
+                                setLoading(false);
+
+                                const changed=snap.docChanges().filter(c=>c.type!=='added').length;
+                                if(changed>0 && !snap.metadata?.hasPendingWrites){
+                                    window.dispatchEvent(new CustomEvent('simak-realtime-update',{detail:{
+                                        collection:'users',
+                                        count:changed,
+                                        at:new Date().toISOString()
+                                    }}));
+                                }
+                            },
+                            err=>{
+                                if(!alive) return;
+                                attached=false;
+                                const text=`${err.code||''} ${err.message||err}`.trim();
+                                setAccountError(text);
+                                setMessage({type:'warning',text:`Realtime akun terputus. Data terakhir tetap ditampilkan. ${text}`});
+                                try{unsubUsers&&unsubUsers();}catch(e){}
+                                retryTimer=setTimeout(attachRealtime,3000);
+                            }
+                        );
+
+                        unsubRequests=firestoreInstance.collection('accountAdminRequests')
+                            .orderBy('createdAt','desc').limit(200)
+                            .onSnapshot(
+                                {includeMetadataChanges:true},
+                                snap=>{
+                                    if(!alive) return;
+                                    setRequests(snap.docs.map(d=>({id:d.id,...d.data()})));
+                                },
+                                err=>console.warn('Realtime accountAdminRequests gagal',err)
+                            );
+                    }catch(e){
+                        attached=false;
+                        const text=`${e.code||''} ${e.message||e}`.trim();
+                        setAccountError(text);
+                        retryTimer=setTimeout(attachRealtime,3000);
+                    }
+                };
+
+                const initialLoad=async()=>{
                     if(!alive) return;
                     if(!firestoreInstance){
-                        setLoading(true);
-                        retryTimer=setTimeout(attach,500);
+                        startupTimer=setTimeout(initialLoad,500);
                         return;
                     }
 
                     setLoading(true);
-
-                    unsubUsers=firestoreInstance.collection('users').onSnapshot(
-                        {includeMetadataChanges:true},
-                        snap=>{
-                            if(!alive) return;
-                            setAccounts(snap.docs.map(d=>({uid:d.id,...d.data()})));
-                            setLoading(false);
-                            const changed=snap.docChanges().filter(c=>c.type!=='added').length;
-                            if(changed>0 && !snap.metadata?.hasPendingWrites){
-                                window.dispatchEvent(new CustomEvent('simak-realtime-update',{detail:{
-                                    collection:'users',
-                                    count:changed,
-                                    at:new Date().toISOString()
-                                }}));
-                            }
-                        },
-                        err=>{
-                            if(!alive) return;
-                            setMessage({type:'error',text:`Realtime akun gagal: ${err.code||''} ${err.message||err}`});
-                            setLoading(false);
-                            retryTimer=setTimeout(()=>{
-                                try{unsubUsers&&unsubUsers();}catch(e){}
-                                attach();
-                            },2000);
-                        }
-                    );
-
-                    unsubRequests=firestoreInstance.collection('accountAdminRequests')
-                        .orderBy('createdAt','desc').limit(200)
-                        .onSnapshot(
-                            {includeMetadataChanges:true},
-                            snap=>{
-                                if(!alive) return;
-                                setRequests(snap.docs.map(d=>({id:d.id,...d.data()})));
-                            },
-                            err=>console.warn('Realtime accountAdminRequests gagal',err)
+                    try{
+                        const snap=await firestoreInstance.collection('users').get();
+                        preserveAndSet(
+                            snap.docs.map(d=>({uid:d.id,...d.data()})),
+                            'Initial Load / Firestore get()'
                         );
+
+                        try{
+                            const reqSnap=await firestoreInstance.collection('accountAdminRequests')
+                                .orderBy('createdAt','desc').limit(200).get();
+                            if(alive) setRequests(reqSnap.docs.map(d=>({id:d.id,...d.data()})));
+                        }catch(reqErr){
+                            console.warn('Initial request load gagal',reqErr);
+                        }
+                    }catch(e){
+                        if(alive){
+                            const text=`${e.code||''} ${e.message||e}`.trim();
+                            setAccountError(text);
+                            setMessage({type:'error',text:`Initial load akun gagal: ${text}`});
+                        }
+                    }finally{
+                        if(alive) setLoading(false);
+                    }
+
+                    attachRealtime();
                 };
 
-                attach();
+                initialLoad();
 
                 return ()=>{
                     alive=false;
                     if(retryTimer) clearTimeout(retryTimer);
+                    if(startupTimer) clearTimeout(startupTimer);
                     try{unsubUsers&&unsubUsers();}catch(e){}
                     try{unsubRequests&&unsubRequests();}catch(e){}
                 };
@@ -8939,6 +9022,19 @@ service firebase.storage {
                     <StatCard title="Belum Login" value={stats.never} icon="fa-user-clock" colorClass="bg-amber-500" subtitle="tracking v54+" />
                     <StatCard title="Akun NISN" value={stats.studentAlias} icon="fa-graduation-cap" colorClass="bg-brand-sea" subtitle="reset via Admin SDK" />
                     <StatCard title="Reset Pending" value={stats.pending} icon="fa-key" colorClass={stats.pending?'bg-red-500':'bg-gray-500'} subtitle="accountAdminRequests" />
+                </div>
+
+                <div className={`rounded-xl border p-4 text-xs ${accountError?'bg-amber-50 border-amber-200 text-amber-800':'bg-green-50 border-green-200 text-green-800'}`}>
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                            <p className="font-bold">{accountError?'Data Recovery Mode Aktif':'Sumber Data Akun Sehat'}</p>
+                            <p className="mt-1">Sumber: <b>{accountSource}</b>{lastSuccessfulLoad&&<> • Load valid terakhir: <b>{new Date(lastSuccessfulLoad).toLocaleString('id-ID')}</b></>}</p>
+                            {accountError&&<p className="mt-1 break-all">Error: {accountError}</p>}
+                        </div>
+                        <button onClick={()=>loadAccounts()} disabled={loading} className="px-4 py-2 bg-white border rounded-lg font-bold text-brand-navy disabled:opacity-50">
+                            <i className="fas fa-life-ring mr-2"></i>Recovery Load
+                        </button>
+                    </div>
                 </div>
 
                 <Card title="Filter & Tindakan Akun">
@@ -11025,7 +11121,7 @@ service firebase.storage {
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
                                 <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v57.2</span>
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v57.3</span>
                                 <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
                             </div>
                             <div className="text-[10px] text-gray-400">
@@ -11416,6 +11512,43 @@ service firebase.storage {
             },[productionMode,user?.uid]);
 
             useEffect(()=>{
+                if(!productionMode || !user?.uid) return;
+                let cancelled=false;
+                const verify=async()=>{
+                    if(!firestoreInstance || cancelled) return;
+                    try{
+                        await firestoreInstance.collection('academicPeriods').limit(1).get();
+                        if(cancelled) return;
+                        setRealtimeStatus(prev=>{
+                            if((prev.listenerCount||0)===0){
+                                setFirebaseRuntimeTick(v=>v+1);
+                                return {
+                                    ...prev,
+                                    state:'connecting',
+                                    label:'Firestore siap • memasang ulang listener',
+                                    message:'Fallback connectivity check berhasil',
+                                    online:true
+                                };
+                            }
+                            return prev;
+                        });
+                    }catch(e){
+                        if(cancelled) return;
+                        setRealtimeStatus(prev=>({
+                            ...prev,
+                            state:navigator.onLine?'error':'offline',
+                            label:navigator.onLine?'Firestore tidak dapat dibaca':'Offline',
+                            message:`${e.code||''} ${e.message||e}`,
+                            online:navigator.onLine
+                        }));
+                    }
+                };
+                verify();
+                const timer=setInterval(verify,5000);
+                return ()=>{cancelled=true;clearInterval(timer);};
+            },[productionMode,user?.uid]);
+
+            useEffect(()=>{
                 if(!activePeriod) return;
                 let changed=false;
                 const next={...rawData};
@@ -11494,7 +11627,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','57.2');
+                    localStorage.setItem('simak_schema_version','57.3');
                 }catch(e){}
             },[rawData]);
 

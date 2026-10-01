@@ -1,18 +1,17 @@
-# SIMAK SMANTANG v57.1 — Realtime Sync Fix
+# SIMAK SMANTANG v57.3 — Realtime Fallback & Account Data Recovery Fix
 
 Perbaikan utama:
-- `users/{uid}` sekarang dipantau realtime secara terpisah untuk Kepala Sekolah/Wakil Kurikulum.
-- **Manajemen Akun & Password** memakai `onSnapshot()` untuk koleksi `users` dan `accountAdminRequests`.
-- Perubahan status akun dari perangkat A langsung muncul pada perangkat B tanpa tombol Refresh.
-- `rawData.users` tetap memakai `staffMaster`, sehingga profil Firebase tidak menimpa master pegawai.
-- Status bar menampilkan badge **v57.1** agar deploy dapat diverifikasi.
+- Manajemen Akun melakukan initial load `users.get()` sebelum mengandalkan realtime.
+- Setelah data awal valid tampil, `onSnapshot()` mengambil alih.
+- Snapshot kosong/transien tidak lagi mengosongkan tabel.
+- Jika realtime gagal, data valid terakhir tetap terlihat.
+- Listener mencoba tersambung ulang otomatis.
+- Tombol **Recovery Load** memaksa pembacaan ulang Firestore.
+- Panel status menampilkan sumber data akun dan error yang sebenarnya.
+- Fallback connectivity check memastikan Firestore dibaca sebelum listener dipasang ulang.
 
-## Cara uji
-1. Upload `index.html` v57.1 ke GitHub.
-2. Tunggu Vercel Ready.
-3. Pada dua perangkat lakukan Ctrl+F5.
-4. Pastikan status bar menampilkan `Realtime LIVE` dan badge `v57.1`.
-5. Buka **Manajemen Akun & Password** pada kedua perangkat.
-6. Di perangkat A aktif/nonaktifkan satu akun uji.
-7. Perangkat B harus berubah otomatis tanpa Refresh.
-8. Untuk data akademik, ubah data non-kritis pada A dan lihat modul yang sama pada B.
+Target setelah deploy:
+- Total akun kembali 166.
+- Sumber awal: `Initial Load / Firestore get()`.
+- Setelah listener hidup: `Realtime Firestore`.
+- Realtime gagal tidak boleh mengubah total akun menjadi 0.
