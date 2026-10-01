@@ -28,6 +28,18 @@ service cloud.firestore {
     function parentOf(studentId) {
       return active() && profile().role == 'Orang Tua/Wali' && profile().childId == studentId;
     }
+    function isStudent() {
+      return roleIs('Murid');
+    }
+    function isParent() {
+      return roleIs('Orang Tua/Wali');
+    }
+    function selfStudentId() {
+      return profile().localId;
+    }
+    function childStudentId() {
+      return profile().childId;
+    }
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isManagement());
@@ -143,7 +155,9 @@ service cloud.firestore {
 
     match /leaveRequests/{id} {
       allow read: if isStaff() || ownStudent(resource.data.personId) || parentOf(resource.data.personId);
-      allow create: if active();
+      allow create: if isStaff()
+        || (isStudent() && request.resource.data.personId == selfStudentId())
+        || (isParent() && request.resource.data.personId == childStudentId());
       allow update: if isTeachingStaff();
       allow delete: if isManagement();
     }
@@ -206,18 +220,26 @@ service cloud.firestore {
     }
 
     match /tkaQuestions/{id} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isStudent();
       allow write: if isTeachingStaff();
     }
 
     match /tkaPackages/{id} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isStudent();
       allow write: if isTeachingStaff();
     }
 
     match /tkaAttempts/{id} {
-      allow read: if isStaff();
-      allow write: if isTeachingStaff();
+      allow read: if isStaff()
+        || (isStudent() && resource.data.studentId == selfStudentId());
+      allow create: if isTeachingStaff()
+        || (
+          isStudent()
+          && request.resource.data.studentId == selfStudentId()
+          && request.resource.data.ownerUid == request.auth.uid
+        );
+      allow update: if isTeachingStaff();
+      allow delete: if isManagement();
     }
 
     match /{document=**} {
