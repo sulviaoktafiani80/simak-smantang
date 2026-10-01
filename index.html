@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v52.1 - Firebase Bootstrap Login & Secure Migration</title>
+    <title>SIMAK SMANTANG v52.2 - Go-Live Bootstrap Fix</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -91,7 +91,7 @@
     </style>
 </head>
 <body>
-    <!-- SIMAK SMANTANG v52.1 - Bootstrap Login & Secure Migration -->
+    <!-- SIMAK SMANTANG v52.2 - Go-Live Bootstrap Fix -->
     <div id="root"></div>
 
     
@@ -1729,7 +1729,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v52.1 • Firebase Bootstrap Login • Secure Migration • Go-Live</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v52.2 • Go-Live Bootstrap Fix • Secure Migration • Firestore Production</span>
                         </div>
                     </div>
                 </div>
@@ -8099,18 +8099,23 @@ service firebase.storage {
             const [tests,setTests]=useState([]);
             const [testing,setTesting]=useState(false);
             const [masterSync,setMasterSync]=useState('');
+            const [bootstrapSession,setBootstrapSessionState]=useState(()=>getBootstrapSession());
             const runtime=getFirebaseRuntimeStatus();
             const source=rawData||{};
+            const bootstrapValid=!!bootstrapSession && ['Kepala Sekolah','Wakil Kurikulum'].includes(bootstrapSession.role);
 
             const runTests=async()=>{
                 setTesting(true);
+                const latestBootstrap=getBootstrapSession();
+                setBootstrapSessionState(latestBootstrap);
+                const bootstrapOk=!!latestBootstrap && ['Kepala Sekolah','Wakil Kurikulum'].includes(latestBootstrap.role);
                 const result=[];
                 const add=(name,ok,detail)=>result.push({name,ok,detail});
 
                 add('Firebase configuration',runtime.configReady,runtime.configReady?'Config lengkap':'Config belum lengkap');
                 add('Firebase Authentication SDK',runtime.authReady,runtime.authReady?'Auth siap':'Auth belum siap');
                 add('Cloud Firestore SDK',runtime.firestoreReady,runtime.firestoreReady?'Firestore siap':'Firestore belum siap');
-                add('Firebase Storage SDK',runtime.storageReady,runtime.storageReady?'Storage siap':'Storage belum siap');
+                add('Firebase Storage SDK (opsional)',true,runtime.storageReady?'SDK Storage termuat; bucket dapat diaktifkan saat Blaze diperlukan':'Storage tidak aktif, tetapi tidak memblokir Go-Live inti');
                 add('Periode akademik aktif',!!activePeriod,activePeriod?`${activePeriod.academicYear} • ${activePeriod.semester}`:'Tidak ada periode aktif');
 
                 if(firestoreInstance){
@@ -8137,7 +8142,17 @@ service firebase.storage {
                     }
                 }
 
-                add('Profil Firebase akun saat ini',user?.authProvider==='firebase',user?.authProvider==='firebase'?`UID ${user.uid}`:'Saat ini masih login staging/prototype');
+                const productionSessionOk=user?.authProvider==='firebase';
+                const authOk=productionSessionOk || bootstrapOk;
+                add(
+                    'Profil Firebase akun saat ini',
+                    authOk,
+                    productionSessionOk
+                        ? `Firebase Production session aktif • UID ${user.uid}`
+                        : bootstrapOk
+                            ? `Firebase Admin Bootstrap Authenticated • ${latestBootstrap.name} • ${latestBootstrap.role} • UID ${latestBootstrap.uid}`
+                            : 'Belum ada Firebase Production session atau Bootstrap Admin yang valid'
+                );
                 setTests(result);
                 setTesting(false);
             };
@@ -8184,6 +8199,10 @@ service firebase.storage {
                 const failed=tests.filter(t=>!t.ok);
                 if(!tests.length) return alert('Jalankan Uji Go-Live terlebih dahulu.');
                 if(failed.length) return alert(`Masih ada ${failed.length} pemeriksaan yang belum lulus. Perbaiki sebelum aktivasi produksi.`);
+                const latestBootstrap=getBootstrapSession();
+                const hasBootstrap=!!latestBootstrap && ['Kepala Sekolah','Wakil Kurikulum'].includes(latestBootstrap.role);
+                const hasProductionUser=user?.authProvider==='firebase';
+                if(!hasBootstrap && !hasProductionUser) return alert('Firebase Admin belum terautentikasi. Login Bootstrap Admin terlebih dahulu.');
                 if(!confirm('AKTIFKAN MODE PRODUKSI?\n\nSetelah aktif, login menggunakan Firebase Authentication dan Firestore menjadi sumber data utama. Pastikan backup dan rollback plan tersedia.')) return;
                 setGoLiveMode('production');
                 localStorage.setItem('simak_firebase_mode','firebase');
@@ -8211,7 +8230,7 @@ service firebase.storage {
                         <div className="bg-white/10 border border-white/20 rounded-2xl p-4 min-w-[250px]">
                             <p className="text-[10px] text-white/60 uppercase tracking-wider">Mode Aplikasi</p>
                             <p className="font-bold mt-1">{mode==='production'?'PRODUCTION':'STAGING'}</p>
-                            <p className="text-xs text-brand-gold mt-1">{cloudStatus?.message||'Belum ada status cloud'}</p>
+                            <p className="text-xs text-brand-gold mt-1">{bootstrapValid?`Bootstrap: ${bootstrapSession.name} • ${bootstrapSession.role}`:(cloudStatus?.message||'Belum ada status cloud')}</p>
                         </div>
                     </div>
                 </div>
@@ -8240,6 +8259,17 @@ service firebase.storage {
                     <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-gray-50 text-xs uppercase text-gray-500"><tr><th className="px-3 py-3">Status</th><th className="px-3 py-3 text-left">Pemeriksaan</th><th className="px-3 py-3 text-left">Keterangan</th></tr></thead><tbody>{tests.map((t,i)=><tr key={i} className="border-b"><td className="px-3 py-3 text-center">{t.ok?<span className="px-2 py-1 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">LULUS</span>:<span className="px-2 py-1 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">BELUM</span>}</td><td className="px-3 py-3 font-semibold">{t.name}</td><td className="px-3 py-3 text-gray-600">{t.detail}</td></tr>)}</tbody></table></div>
                 </Card>}
 
+
+                <Card title="Status Autentikasi Pra-Go-Live">
+                    <div className={`rounded-xl p-4 border ${bootstrapValid?'bg-green-50 border-green-200':'bg-amber-50 border-amber-200'}`}>
+                        {bootstrapValid
+                            ? <div className="flex items-start gap-3"><div className="w-10 h-10 rounded-full bg-green-600 text-white flex items-center justify-center"><i className="fas fa-user-shield"></i></div><div><p className="font-bold text-green-800">Firebase Admin Bootstrap Authenticated</p><p className="text-sm text-green-700 mt-1">{bootstrapSession.name} • {bootstrapSession.role}</p><p className="text-[11px] text-green-600 mt-1">UID: {bootstrapSession.uid}</p></div></div>
+                            : <div className="text-amber-800 text-sm"><i className="fas fa-triangle-exclamation mr-2"></i>Belum ada Bootstrap Admin valid. Kembali ke menu Migrasi Data & Akun dan login Firebase Admin terlebih dahulu.</div>
+                        }
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-3">Bootstrap hanya digunakan untuk validasi dan aktivasi pra-Go-Live. Setelah Production aktif, login utama sepenuhnya menggunakan Firebase Authentication.</p>
+                </Card>
+
                 <Card title="3. Aktivasi / Rollback">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <button onClick={activateProduction} disabled={mode==='production'} className="p-5 rounded-xl bg-green-600 text-white text-left disabled:opacity-40"><i className="fas fa-rocket text-2xl"></i><p className="font-bold mt-2">Aktifkan Production</p><p className="text-xs text-white/80 mt-1">Firebase Auth + Firestore sebagai sumber utama.</p></button>
@@ -8249,7 +8279,7 @@ service firebase.storage {
 
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 leading-relaxed">
                     <i className="fas fa-circle-info mr-2"></i>
-                    Pada mode produksi, sesi pengguna berasal dari Firebase Authentication. Untuk akun murid/orang tua, Firestore dibaca secara terfilter berdasarkan localId/childId. Uji Security Rules untuk setiap role sebelum akun tersebut dibagikan.
+                    Pada mode produksi, sesi pengguna berasal dari Firebase Authentication. Untuk akun murid/orang tua, Firestore dibaca secara terfilter berdasarkan localId/childId. Cloud Storage bersifat opsional pada tahap ini dan dapat diaktifkan kemudian saat project memakai Blaze. Uji Security Rules untuk setiap role sebelum akun tersebut dibagikan.
                 </div>
             </div>;
         };
@@ -10057,7 +10087,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','52');
+                    localStorage.setItem('simak_schema_version','52.2');
                 }catch(e){}
             },[rawData]);
 

@@ -1,0 +1,20 @@
+SIMAK SMANTANG v52.2 — FINAL GO-LIVE CHECKLIST
+
+[ ] v52.2 terdeploy
+[ ] Bootstrap Firebase Admin Authenticated
+[ ] Firebase configuration LULUS
+[ ] Firebase Authentication SDK LULUS
+[ ] Cloud Firestore SDK LULUS
+[ ] Periode akademik aktif LULUS
+[ ] Firestore write/read test LULUS
+[ ] students memiliki data
+[ ] staffMaster memiliki data
+[ ] academicPeriods memiliki data
+[ ] schedules memiliki data
+[ ] Profil Firebase akun saat ini LULUS
+[ ] Backup terakhir sudah dibuat
+[ ] Production diaktifkan
+[ ] Login Firebase Wakil Kurikulum berhasil
+[ ] Login Firebase Kepala Sekolah berhasil
+[ ] Uji browser/perangkat kedua berhasil
+[ ] Storage dicatat sebagai opsional
