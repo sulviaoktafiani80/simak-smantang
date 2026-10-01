@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v56 - Manajemen Akun & Reset Password Production</title>
+    <title>SIMAK SMANTANG v57 - Realtime Sync & Multi-Device Engine</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1732,7 +1732,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v56 • Account Management • Password Recovery • Firebase Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v57 • Realtime Sync • Multi-Device Engine • Firebase Production</span>
                         </div>
                     </div>
                 </div>
@@ -2207,6 +2207,7 @@ service firebase.storage {
                             ['fa-rocket','Go-Live v52','golive52'],
                             ['fa-chart-line','Monitoring v54','monitoring54'],
                             ['fa-user-lock','Akun v56','account56'],
+                            ['fa-satellite-dish','Realtime v57','realtime57'],
                             ['fa-shield-halved','QR Security v55','qrsecurity55'],
                         ].map(([icon,label,view])=><button key={view} onClick={()=>setView(view)} className="p-3 border rounded-xl text-xs font-semibold hover:bg-blue-50 hover:border-brand-sea"><i className={`fas ${icon} block text-lg text-brand-sea mb-2`}></i>{label}</button>)}
                     </div>
@@ -5780,7 +5781,7 @@ service firebase.storage {
                 tka:'TKA & Bank Soal', kelas:'Data Kelas', murid:'Data Murid', guruwali:'Dashboard Guru Wali', earlywarning:'Early Warning Murid', kegiatan:'Kegiatan',
                 perangkat:'Perangkat Ajar', periode:'Tahun Ajaran/Semester', bebanmengajar:'Beban Mengajar',
                 supervisi:'Supervisi Akademik', rapor:'Rapor Pendidikan/PBD', arsip:'Arsip Kurikulum', pegawai:'Data Pegawai',
-                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', account56:'Manajemen Akun & Password', qrsecurity55:'Manajemen Token QR v55'
+                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', account56:'Manajemen Akun & Password', realtime57:'Realtime & Multi-Device', qrsecurity55:'Manajemen Token QR v55'
             };
 
             const sensitiveViews = ['nilai','perangkat','periode','supervisi','rapor','pegawai','backup','auditakses'];
@@ -7933,6 +7934,82 @@ service firebase.storage {
             return cloud;
         };
 
+
+        // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
+        const REALTIME_ENGINE_VERSION='57';
+        const realtimeLocalWriteRegistry = new Map();
+
+        const registerRealtimeLocalWrite=(collectionName,docId)=>{
+            const key=`${collectionName}/${docId}`;
+            realtimeLocalWriteRegistry.set(key,Date.now());
+            setTimeout(()=>{
+                const ts=realtimeLocalWriteRegistry.get(key);
+                if(ts && Date.now()-ts>=8000) realtimeLocalWriteRegistry.delete(key);
+            },8500);
+        };
+
+        const getRealtimeListenerSpecs=(profile)=>{
+            const role=normalizeAccessRole(profile);
+            const staffRoles=['Kepala Sekolah','Wakil Kurikulum','Guru','Guru Piket','Tenaga Kependidikan'];
+            const specs=[];
+
+            if(staffRoles.includes(role)){
+                Object.entries(CLOUD_DATA_KEY_MAP).forEach(([localKey,collectionName])=>{
+                    specs.push({
+                        localKey,
+                        collectionName,
+                        query:()=>firestoreInstance.collection(collectionName),
+                        mode:'array'
+                    });
+                });
+                return specs;
+            }
+
+            const localId=profile?.localId||profile?.id||'';
+            const childId=profile?.childId||'';
+            const targetId=role==='Orang Tua/Wali'?childId:localId;
+
+            ['academicPeriods','schedules','announcements'].forEach(localKey=>{
+                specs.push({
+                    localKey,
+                    collectionName:CLOUD_DATA_KEY_MAP[localKey],
+                    query:()=>firestoreInstance.collection(CLOUD_DATA_KEY_MAP[localKey]),
+                    mode:'array'
+                });
+            });
+
+            if(targetId){
+                specs.push({
+                    localKey:'students',
+                    collectionName:'students',
+                    query:()=>firestoreInstance.collection('students').doc(String(targetId)),
+                    mode:'single'
+                });
+                ['attendanceRecords','assessmentRecords','interventionRecords','mentoringRecords'].forEach(localKey=>{
+                    specs.push({
+                        localKey,
+                        collectionName:CLOUD_DATA_KEY_MAP[localKey],
+                        query:()=>firestoreInstance.collection(CLOUD_DATA_KEY_MAP[localKey]).where('studentId','==',targetId),
+                        mode:'array'
+                    });
+                });
+                specs.push({
+                    localKey:'leaveRequests',
+                    collectionName:'leaveRequests',
+                    query:()=>firestoreInstance.collection('leaveRequests').where('personId','==',targetId),
+                    mode:'array'
+                });
+            }
+            return specs;
+        };
+
+        const realtimeSnapshotToValue=(snap,mode)=>{
+            if(mode==='single'){
+                return snap.exists?[{id:snap.id,...snap.data()}]:[];
+            }
+            return firestoreSnapshotToArray(snap);
+        };
+
         const syncCollectionToFirestore = async (localKey, beforeArr, afterArr, actor) => {
             if(!firestoreInstance) return;
             const collectionName=CLOUD_DATA_KEY_MAP[localKey];
@@ -7954,6 +8031,7 @@ service firebase.storage {
             let batch=firestoreInstance.batch(), ops=0;
             for(const item of changed){
                 const ref=firestoreInstance.collection(collectionName).doc(item.id);
+                registerRealtimeLocalWrite(collectionName,item.id);
                 if(item.type==='delete') batch.delete(ref);
                 else batch.set(ref,{
                     ...sanitizeFirestoreValue(item.value),
@@ -8039,7 +8117,7 @@ service firebase.storage {
                     actorName:auditSafeText(current?.displayName||'',120),
                     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
                     clientTime:new Date().toISOString(),
-                    appVersion:'54'
+                    appVersion:'57'
                 });
             }catch(e){
                 console.warn('Audit log gagal',e);
@@ -8064,7 +8142,7 @@ service firebase.storage {
                     actorEmail:u?.email||'',
                     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
                     clientTime:new Date().toISOString(),
-                    appVersion:'54'
+                    appVersion:'57'
                 });
             }catch(e){
                 console.warn('System event gagal',e);
@@ -8079,7 +8157,7 @@ service firebase.storage {
                     lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
                     loginCount:firebase.firestore.FieldValue.increment(1),
                     lastClient:'web',
-                    lastAppVersion:'54'
+                    lastAppVersion:'57'
                 },{merge:true});
             }catch(e){
                 console.warn('Account activity update ditolak/gagal',e);
@@ -8091,7 +8169,7 @@ service firebase.storage {
             try{
                 await firestoreInstance.collection('users').doc(authInstance.currentUser.uid).set({
                     lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
-                    lastAppVersion:'54'
+                    lastAppVersion:'57'
                 },{merge:true});
             }catch(e){}
         };
@@ -8578,6 +8656,77 @@ service firebase.storage {
         };
 
 
+
+        const RealtimeSyncView = () => {
+            const { realtimeStatus, cloudStatus, refreshCloudData, user } = useContext(AppContext);
+            const status=realtimeStatus||{};
+            const state=status.state||'idle';
+            const stateClass=state==='live'?'bg-green-100 text-green-700':state==='offline'?'bg-amber-100 text-amber-700':state==='error'?'bg-red-100 text-red-700':'bg-blue-100 text-blue-700';
+
+            return <div className="space-y-6 animate-fade-in">
+                <div className="bg-gradient-to-r from-brand-navy via-blue-900 to-brand-sea rounded-2xl p-6 text-white shadow-lg">
+                    <p className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">REALTIME ENGINE • v57</p>
+                    <h2 className="text-2xl md:text-3xl font-bold mt-2">Realtime Sync & Multi-Device Engine</h2>
+                    <p className="text-sm text-white/75 mt-1">Firestore onSnapshot • Role-aware listeners • Auto reconnect • Multi-device updates</p>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <StatCard title="Engine" value={state==='live'?'LIVE':state.toUpperCase()} icon="fa-satellite-dish" colorClass={state==='live'?'bg-green-600':'bg-amber-500'} subtitle="Realtime state" />
+                    <StatCard title="Listener Aktif" value={status.listenerCount||0} icon="fa-tower-broadcast" colorClass="bg-brand-navy" subtitle="sesuai role" />
+                    <StatCard title="Update Remote" value={status.remoteUpdateCount||0} icon="fa-cloud-arrow-down" colorClass="bg-brand-sea" subtitle="sesi ini" />
+                    <StatCard title="Konflik Terdeteksi" value={status.conflictCount||0} icon="fa-code-compare" colorClass={(status.conflictCount||0)?'bg-red-500':'bg-gray-500'} subtitle="peringatan concurrency" />
+                    <StatCard title="Koneksi" value={status.online?'ONLINE':'OFFLINE'} icon="fa-wifi" colorClass={status.online?'bg-green-600':'bg-red-600'} subtitle="browser network" />
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <Card title="Status Sinkronisasi">
+                        <div className={`rounded-xl p-4 ${stateClass}`}>
+                            <p className="font-bold">{status.label||'Menunggu listener'}</p>
+                            <p className="text-xs mt-1 opacity-80">{status.message||cloudStatus?.message||'-'}</p>
+                        </div>
+                        <div className="mt-4 space-y-2 text-xs">
+                            <div className="flex justify-between"><span className="text-gray-500">Update terakhir</span><b>{status.lastUpdate?new Date(status.lastUpdate).toLocaleString('id-ID'):'-'}</b></div>
+                            <div className="flex justify-between"><span className="text-gray-500">Koleksi terakhir</span><b>{status.lastCollection||'-'}</b></div>
+                            <div className="flex justify-between"><span className="text-gray-500">Sumber snapshot</span><b>{status.fromCache?'Cache/Offline':'Server'}</b></div>
+                        </div>
+                        <button onClick={()=>refreshCloudData(user)} className="mt-4 w-full py-2.5 bg-brand-navy text-white rounded-lg text-xs font-bold"><i className="fas fa-rotate mr-2"></i>Sinkronisasi Penuh Sekarang</button>
+                    </Card>
+
+                    <Card title="Koleksi Realtime" className="xl:col-span-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-[420px] overflow-auto">
+                            {(status.listeners||[]).map(x=><div key={x.localKey} className="border rounded-xl p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="font-bold text-xs">{x.localKey}</p>
+                                    <span className={`w-2.5 h-2.5 rounded-full ${x.state==='live'?'bg-green-500':x.state==='error'?'bg-red-500':'bg-amber-400'}`}></span>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-1">{x.collectionName}</p>
+                                <p className="text-[10px] text-gray-500 mt-2">{x.count??0} record • {x.fromCache?'cache':'server'}</p>
+                            </div>)}
+                            {!(status.listeners||[]).length&&<p className="text-sm text-gray-400">Listener belum aktif.</p>}
+                        </div>
+                    </Card>
+                </div>
+
+                <Card title="Cara Uji Multi-Device">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div className="border rounded-xl p-4"><div className="w-8 h-8 rounded-full bg-brand-navy text-white flex items-center justify-center font-bold">1</div><p className="font-bold mt-3">Perangkat A</p><p className="text-xs text-gray-500 mt-1">Login sebagai Guru/Waka lalu ubah satu data non-kritis.</p></div>
+                        <div className="border rounded-xl p-4"><div className="w-8 h-8 rounded-full bg-brand-sea text-white flex items-center justify-center font-bold">2</div><p className="font-bold mt-3">Perangkat B</p><p className="text-xs text-gray-500 mt-1">Buka modul yang sama. Data harus berubah tanpa reload.</p></div>
+                        <div className="border rounded-xl p-4"><div className="w-8 h-8 rounded-full bg-green-600 text-white flex items-center justify-center font-bold">3</div><p className="font-bold mt-3">QR v55</p><p className="text-xs text-gray-500 mt-1">Scan kehadiran di HP. Rekap pada laptop harus ikut diperbarui otomatis.</p></div>
+                    </div>
+                </Card>
+
+                {(status.conflictCount||0)>0&&<div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
+                    <i className="fas fa-triangle-exclamation mr-2"></i>
+                    Sistem mendeteksi perubahan berdekatan pada dokumen yang sama dari lebih dari satu perangkat. Periksa data terakhir sebelum melanjutkan edit.
+                </div>}
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800">
+                    <i className="fas fa-circle-info mr-2"></i>
+                    v57 memakai listener Firestore live. Listener otomatis dihentikan saat akun logout atau role berubah, sehingga tidak menumpuk di browser. Firestore juga melakukan reconnect otomatis ketika jaringan kembali tersedia.
+                </div>
+            </div>;
+        };
+
         const AccountManagementView = () => {
             const { user } = useContext(AppContext);
             const [accounts,setAccounts]=useState([]);
@@ -8811,7 +8960,7 @@ service firebase.storage {
                         checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
                         checkedBy:user?.name||'-',
                         checkedByUid:user?.uid||'',
-                        appVersion:'54',
+                        appVersion:'57',
                         academicPeriod:activePeriod?.id||null
                     },{merge:true});
                     const snap=await ref.get();
@@ -10454,12 +10603,12 @@ service firebase.storage {
             'Kepala Sekolah': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56','realtime57'
             ],
             'Wakil Kurikulum': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56','realtime57'
             ],
             'Guru': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','rekapabsensi','rekapqr','kartuid','checkio','izin','nilai','remedial','tka','kelas','murid',
@@ -10510,9 +10659,19 @@ service firebase.storage {
         };
 
         const Layout = ({ children }) => {
-            const { user, setUser, view, setView, activePeriod, logout } = useContext(AppContext);
+            const { user, setUser, view, setView, activePeriod, realtimeStatus, logout } = useContext(AppContext);
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
             const [menuSearch, setMenuSearch] = useState('');
+            const [realtimeToast,setRealtimeToast]=useState(null);
+            useEffect(()=>{
+                const handler=(e)=>{
+                    const d=e.detail||{};
+                    setRealtimeToast(`${d.collection||'Data'} diperbarui dari cloud`);
+                    setTimeout(()=>setRealtimeToast(null),3500);
+                };
+                window.addEventListener('simak-realtime-update',handler);
+                return ()=>window.removeEventListener('simak-realtime-update',handler);
+            },[]);
             const [openGroups, setOpenGroups] = useState({
                 utama: true,
                 akademik: true,
@@ -10555,6 +10714,7 @@ service firebase.storage {
                 { id: 'golive52', label: 'Uji Produksi & Go-Live', icon: 'fa-rocket' },
                 { id: 'monitoring54', label: 'Audit & Monitoring Produksi', icon: 'fa-chart-line' },
                 { id: 'account56', label: 'Manajemen Akun & Password', icon: 'fa-user-lock' },
+                { id: 'realtime57', label: 'Realtime & Multi-Device', icon: 'fa-satellite-dish' },
                 { id: 'bebanmengajar', label: 'Beban Mengajar', icon: 'fa-chart-gantt' },
                 { id: 'supervisi', label: 'Supervisi Akademik', icon: 'fa-clipboard-check' },
                 { id: 'rapor', label: 'Rapor Pendidikan & PBD', icon: 'fa-chart-pie' },
@@ -10585,7 +10745,7 @@ service firebase.storage {
                 },
                 {
                     id:'administrasi', label:'Administrasi & Laporan', icon:'fa-folder-tree',
-                    items:['pegawai','laporan','backup','auditakses','account56','monitoring54']
+                    items:['pegawai','laporan','backup','auditakses','account56','monitoring54','realtime57']
                 }
             ];
 
@@ -10626,6 +10786,9 @@ service firebase.storage {
 
             return (
                 <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row">
+                    {realtimeToast&&<div className="fixed top-4 right-4 z-[100] bg-brand-navy text-white px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold border border-white/10">
+                        <i className="fas fa-cloud-arrow-down mr-2 text-brand-gold"></i>{realtimeToast}
+                    </div>}
                     {/* Mobile Header Overlay */}
                     <div className="md:hidden bg-brand-navy text-white p-4 flex justify-between items-center shadow-md sticky top-0 z-40">
                         <div className="flex items-center space-x-3">
@@ -10790,6 +10953,16 @@ service firebase.storage {
                                 {user?.role}
                             </span>
                         </div>
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-white px-3.5 py-2.5 shadow-sm">
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
+                                <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
+                                <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
+                            </div>
+                            <div className="text-[10px] text-gray-400">
+                                {realtimeStatus?.lastUpdate?`Update ${new Date(realtimeStatus.lastUpdate).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}`:'Menunggu perubahan'}
+                            </div>
+                        </div>
                         {children}
                     </main>
                 </div>
@@ -10802,6 +10975,19 @@ service firebase.storage {
             const [authLoading,setAuthLoading]=useState(productionMode);
             const [view,setView]=useState('dashboard');
             const [cloudStatus,setCloudStatus]=useState({state:productionMode?'loading':'local',message:productionMode?'Menunggu Firebase session':'Staging lokal'});
+            const [realtimeStatus,setRealtimeStatus]=useState({
+                state:productionMode?'connecting':'local',
+                label:productionMode?'Menghubungkan realtime...':'Mode lokal',
+                message:'',
+                online:typeof navigator!=='undefined'?navigator.onLine:true,
+                listenerCount:0,
+                remoteUpdateCount:0,
+                conflictCount:0,
+                lastUpdate:null,
+                lastCollection:'',
+                fromCache:false,
+                listeners:[]
+            });
             const [rawData,setRawData]=useState(()=>{
                 try{
                     const saved=localStorage.getItem('simak_smantang_data_v2');
@@ -10941,6 +11127,147 @@ service firebase.storage {
                 return ()=>unsubscribe&&unsubscribe();
             },[productionMode]);
 
+
+            useEffect(()=>{
+                if(!productionMode || !user?.uid || user?.authProvider!=='firebase' || !firestoreInstance) return;
+
+                const specs=getRealtimeListenerSpecs(user);
+                let alive=true;
+                const listenerState=new Map();
+                const unsubs=[];
+
+                setRealtimeStatus(prev=>({
+                    ...prev,
+                    state:navigator.onLine?'connecting':'offline',
+                    label:navigator.onLine?'Mengaktifkan listener realtime...':'Offline',
+                    message:`Menyiapkan ${specs.length} listener sesuai role ${normalizeAccessRole(user)}`,
+                    online:navigator.onLine,
+                    listenerCount:specs.length,
+                    listeners:specs.map(s=>({localKey:s.localKey,collectionName:s.collectionName,state:'connecting',count:0,fromCache:false}))
+                }));
+
+                const updateListenerState=(spec,patch)=>{
+                    const current=listenerState.get(spec.localKey)||{localKey:spec.localKey,collectionName:spec.collectionName,state:'connecting',count:0,fromCache:false};
+                    listenerState.set(spec.localKey,{...current,...patch});
+                    if(!alive) return;
+                    setRealtimeStatus(prev=>({
+                        ...prev,
+                        listeners:Array.from(listenerState.values()),
+                        listenerCount:specs.length
+                    }));
+                };
+
+                specs.forEach(spec=>{
+                    let firstSnapshot=true;
+                    try{
+                        const target=spec.query();
+                        const unsub=target.onSnapshot({includeMetadataChanges:true},snap=>{
+                            if(!alive) return;
+                            const value=realtimeSnapshotToValue(snap,spec.mode);
+                            const fromCache=!!snap.metadata?.fromCache;
+                            const hasPendingWrites=!!snap.metadata?.hasPendingWrites;
+
+                            let remoteChanges=0;
+                            let conflictDelta=0;
+                            if(spec.mode==='array' && typeof snap.docChanges==='function'){
+                                snap.docChanges().forEach(change=>{
+                                    if(change.type==='added' && firstSnapshot) return;
+                                    const key=`${spec.collectionName}/${change.doc.id}`;
+                                    const row=change.doc.data()||{};
+                                    const recentLocal=realtimeLocalWriteRegistry.get(key);
+                                    if(!hasPendingWrites && change.type!=='added') remoteChanges++;
+                                    if(recentLocal && Date.now()-recentLocal<8000 && row._cloudUpdatedBy && row._cloudUpdatedBy!==user.name){
+                                        conflictDelta++;
+                                    }
+                                });
+                            }else if(!firstSnapshot && !hasPendingWrites){
+                                remoteChanges=1;
+                            }
+
+                            setRawData(prev=>({...prev,[spec.localKey]:value}));
+                            updateListenerState(spec,{
+                                state:'live',
+                                count:value.length,
+                                fromCache,
+                                lastUpdate:new Date().toISOString()
+                            });
+
+                            setRealtimeStatus(prev=>({
+                                ...prev,
+                                state:navigator.onLine?'live':'offline',
+                                label:navigator.onLine?'Realtime tersambung':'Offline • memakai cache',
+                                message:hasPendingWrites?'Menyinkronkan perubahan lokal...':`Sinkron ${spec.collectionName}`,
+                                online:navigator.onLine,
+                                remoteUpdateCount:(prev.remoteUpdateCount||0)+remoteChanges,
+                                conflictCount:(prev.conflictCount||0)+conflictDelta,
+                                lastUpdate:new Date().toISOString(),
+                                lastCollection:spec.collectionName,
+                                fromCache
+                            }));
+
+                            if(remoteChanges>0 && !hasPendingWrites){
+                                window.dispatchEvent(new CustomEvent('simak-realtime-update',{detail:{
+                                    collection:spec.collectionName,
+                                    count:remoteChanges,
+                                    at:new Date().toISOString()
+                                }}));
+                            }
+                            if(conflictDelta>0){
+                                writeSystemEvent({
+                                    type:'REALTIME_CONFLICT_WARNING',
+                                    message:`${conflictDelta} potensi konflik perubahan pada ${spec.collectionName}`,
+                                    context:`role=${normalizeAccessRole(user)}`,
+                                    severity:'warning'
+                                });
+                            }
+                            firstSnapshot=false;
+                        },err=>{
+                            updateListenerState(spec,{state:'error',error:err.code||err.message});
+                            setRealtimeStatus(prev=>({
+                                ...prev,
+                                state:'error',
+                                label:'Sebagian listener bermasalah',
+                                message:`${spec.collectionName}: ${err.code||err.message||err}`
+                            }));
+                            writeSystemEvent({
+                                type:'REALTIME_LISTENER_ERROR',
+                                message:err.message||String(err),
+                                context:`collection=${spec.collectionName}`
+                            });
+                        });
+                        unsubs.push(unsub);
+                    }catch(err){
+                        updateListenerState(spec,{state:'error',error:err.code||err.message});
+                    }
+                });
+
+                const online=()=>{
+                    if(!alive) return;
+                    setRealtimeStatus(prev=>({...prev,state:'connecting',label:'Jaringan kembali • menyambungkan...',online:true,message:'Firestore melakukan reconnect otomatis'}));
+                };
+                const offline=()=>{
+                    if(!alive) return;
+                    setRealtimeStatus(prev=>({...prev,state:'offline',label:'Offline',online:false,message:'Perubahan lokal menunggu jaringan; data cache tetap dapat tampil'}));
+                };
+                window.addEventListener('online',online);
+                window.addEventListener('offline',offline);
+
+                writeAuditLog({
+                    action:'REALTIME_START',
+                    module:'Realtime Sync v57',
+                    collection:'*',
+                    documentId:user.uid,
+                    detail:`${specs.length} listener aktif untuk ${normalizeAccessRole(user)}`
+                });
+
+                return ()=>{
+                    alive=false;
+                    unsubs.forEach(fn=>{try{fn&&fn();}catch(e){}});
+                    window.removeEventListener('online',online);
+                    window.removeEventListener('offline',offline);
+                };
+            },[productionMode,user?.uid,user?.role]);
+
             useEffect(()=>{
                 if(!activePeriod) return;
                 let changed=false;
@@ -11020,7 +11347,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','56');
+                    localStorage.setItem('simak_schema_version','57');
                 }catch(e){}
             },[rawData]);
 
@@ -11042,11 +11369,11 @@ service firebase.storage {
 
             const contextValue=useMemo(()=>({
                 user,setUser,view,setView,data,rawData,setData,activePeriod,
-                cloudStatus,refreshCloudData,productionMode,logout
-            }),[user,view,data,rawData,activePeriod,cloudStatus,productionMode]);
+                cloudStatus,refreshCloudData,realtimeStatus,productionMode,logout
+            }),[user,view,data,rawData,activePeriod,cloudStatus,realtimeStatus,productionMode]);
 
             if(authLoading){
-                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v52</p></div></div>;
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v57</p></div></div>;
             }
 
             if(!user){
@@ -11096,6 +11423,7 @@ service firebase.storage {
                     case 'golive52': return <ProductionGoLiveView />;
                     case 'monitoring54': return <ProductionMonitoringView />;
                     case 'account56': return <AccountManagementView />;
+                    case 'realtime57': return <RealtimeSyncView />;
                     case 'supervisi': return <SupervisiView />;
                     case 'rapor': return <RaporPendidikanView />;
                     default: return <PlaceholderView title="Modul SIMAK" icon="fa-tools" />;

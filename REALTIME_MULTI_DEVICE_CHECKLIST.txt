@@ -1,0 +1,18 @@
+SIMAK SMANTANG v57 — REALTIME & MULTI-DEVICE CHECKLIST
+
+[ ] index.html v57 terdeploy ke Vercel
+[ ] Login Production berhasil
+[ ] Status bar menunjukkan Realtime LIVE
+[ ] Listener aktif > 0
+[ ] Dashboard Realtime & Multi-Device dapat dibuka oleh Kepala Sekolah/Waka Kurikulum
+[ ] Dua perangkat login bersamaan
+[ ] Perubahan data A tampil di B tanpa reload
+[ ] Perubahan data B tampil di A tanpa reload
+[ ] Toast update cloud muncul
+[ ] Scan Secure QR di HP memperbarui rekap laptop
+[ ] Offline mengubah status menjadi Offline
+[ ] Reconnect mengembalikan status Realtime LIVE
+[ ] Listener berhenti setelah logout
+[ ] Tidak ada error listener pada Audit Monitoring
+[ ] Sinkronisasi penuh manual tetap bekerja
+[ ] Uji potensi konflik dua perangkat dilakukan pada data uji
