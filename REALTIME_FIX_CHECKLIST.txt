@@ -1,0 +1,13 @@
+SIMAK SMANTANG v57.1 — REALTIME FIX CHECKLIST
+
+[ ] Vercel menampilkan build v57.1
+[ ] Ctrl+F5 pada kedua perangkat
+[ ] Badge v57.1 terlihat di bar Realtime
+[ ] Status Realtime LIVE
+[ ] Manajemen Akun dibuka di perangkat A dan B
+[ ] Nonaktifkan satu akun uji di A
+[ ] Status akun berubah otomatis di B tanpa Refresh
+[ ] Aktifkan kembali akun di A
+[ ] Status berubah otomatis di B
+[ ] Perubahan data akademik uji tampil di perangkat lain
+[ ] Secure QR scan memperbarui rekap perangkat lain

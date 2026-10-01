@@ -1,32 +1,18 @@
-# SIMAK SMANTANG v57 — Realtime Sync & Multi-Device Engine
+# SIMAK SMANTANG v57.1 — Realtime Sync Fix
 
-## Fitur utama
-- Firestore `onSnapshot()` untuk sinkronisasi live.
-- Listener otomatis sesuai role pengguna.
-- Kepala Sekolah/Waka/Guru/Guru Piket/Tendik menerima koleksi kerja yang diizinkan.
-- Murid/Orang Tua hanya menerima data publik dan data murid terkait.
-- Status global: Realtime LIVE / Connecting / Offline / Error.
-- Reconnect otomatis saat internet kembali.
-- Listener otomatis di-unsubscribe saat logout/role berubah.
-- Toast `Data diperbarui dari cloud` ketika perangkat lain melakukan perubahan.
-- QR v55 yang dipindai di HP dapat memperbarui rekap pada perangkat lain tanpa reload.
-- Deteksi potensi konflik perubahan berdekatan pada dokumen yang sama.
-- Dashboard **Realtime & Multi-Device** untuk Kepala Sekolah/Wakil Kurikulum.
-- Tombol sinkronisasi penuh manual tetap tersedia sebagai recovery.
+Perbaikan utama:
+- `users/{uid}` sekarang dipantau realtime secara terpisah untuk Kepala Sekolah/Wakil Kurikulum.
+- **Manajemen Akun & Password** memakai `onSnapshot()` untuk koleksi `users` dan `accountAdminRequests`.
+- Perubahan status akun dari perangkat A langsung muncul pada perangkat B tanpa tombol Refresh.
+- `rawData.users` tetap memakai `staffMaster`, sehingga profil Firebase tidak menimpa master pegawai.
+- Status bar menampilkan badge **v57.1** agar deploy dapat diverifikasi.
 
-## Firestore Rules
-v57 tidak menambah koleksi data baru. `firestore.rules` disertakan agar repository tetap lengkap. Jika Rules v56 sudah aktif, rules v57 ini kompatibel dan tidak memerlukan perubahan struktur tambahan.
-
-## Uji multi-device
-1. Deploy `index.html` v57 ke GitHub/Vercel.
-2. Ctrl+F5 pada dua perangkat.
-3. Login Perangkat A dan B dengan akun berbeda.
-4. Pastikan bar status menampilkan **Realtime LIVE**.
-5. Pada A, ubah satu data non-kritis.
-6. Pada B, data harus berubah tanpa reload.
-7. Uji Secure QR v55: scan dari HP lalu lihat rekap kehadiran di laptop.
-8. Putuskan internet salah satu perangkat; status menjadi **Offline**.
-9. Sambungkan internet kembali; status akan kembali connecting/live.
-
-## Catatan konflik
-Firestore tetap menggunakan model last-write-wins untuk penulisan biasa. v57 menambahkan **peringatan konflik** ketika perubahan pada dokumen yang sama terjadi dalam jendela waktu berdekatan. Untuk transaksi kritis yang membutuhkan konsistensi kuat, gunakan transaction seperti modul Secure QR v55.
+## Cara uji
+1. Upload `index.html` v57.1 ke GitHub.
+2. Tunggu Vercel Ready.
+3. Pada dua perangkat lakukan Ctrl+F5.
+4. Pastikan status bar menampilkan `Realtime LIVE` dan badge `v57.1`.
+5. Buka **Manajemen Akun & Password** pada kedua perangkat.
+6. Di perangkat A aktif/nonaktifkan satu akun uji.
+7. Perangkat B harus berubah otomatis tanpa Refresh.
+8. Untuk data akademik, ubah data non-kritis pada A dan lihat modul yang sama pada B.
