@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v59.2 - Dynamic Date, Timezone & Server Time Fix</title>
+    <title>SIMAK SMANTANG v60 - Final Production Readiness & Disaster Recovery</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1898,7 +1898,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v59.2 • Dynamic Date • WIB Timezone • Server Timestamp</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v60 • Final Production Readiness • Disaster Recovery</span>
                         </div>
                     </div>
                 </div>
@@ -2373,6 +2373,7 @@ service firebase.storage {
                             ['fa-chart-line','Monitoring v54','monitoring54'],
                             ['fa-user-lock','Akun v56','account56'],
                             ['fa-satellite-dish','Realtime v57','realtime57'],
+                            ['fa-shield-circle-check','Final v60','readiness60'],
                             ['fa-shield-halved','QR Security v55','qrsecurity55'],
                         ].map(([icon,label,view])=><button key={view} onClick={()=>setView(view)} className="p-3 border rounded-xl text-xs font-semibold hover:bg-blue-50 hover:border-brand-sea"><i className={`fas ${icon} block text-lg text-brand-sea mb-2`}></i>{label}</button>)}
                     </div>
@@ -5957,7 +5958,7 @@ service firebase.storage {
                 tka:'TKA & Bank Soal', kelas:'Data Kelas', murid:'Data Murid', guruwali:'Dashboard Guru Wali', earlywarning:'Early Warning Murid', kegiatan:'Kegiatan',
                 perangkat:'Perangkat Ajar', periode:'Tahun Ajaran/Semester', bebanmengajar:'Beban Mengajar',
                 supervisi:'Supervisi Akademik', rapor:'Rapor Pendidikan/PBD', arsip:'Arsip Kurikulum', pegawai:'Data Pegawai',
-                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', account56:'Manajemen Akun & Password', realtime57:'Realtime & Multi-Device', qrsecurity55:'Manajemen Token QR v55'
+                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', account56:'Manajemen Akun & Password', realtime57:'Realtime & Multi-Device', readiness60:'Final Readiness & Recovery', qrsecurity55:'Manajemen Token QR v55'
             };
 
             const sensitiveViews = ['nilai','perangkat','periode','supervisi','rapor','pegawai','backup','auditakses'];
@@ -6587,13 +6588,13 @@ service firebase.storage {
 
             const createBackupPayload = () => ({
                 app: 'SIMAK SMANTANG',
-                version: 'v51',
+                version: 'v60',
                 school: 'SMA Negeri 1 Mantang',
                 academicYear: activePeriod?.academicYear || '2026/2027',
                 semester: activePeriod?.semester || 'Ganjil',
                 exportedAt: new Date().toISOString(),
                 exportedBy: user?.name || '-',
-                schemaVersion: '49',
+                schemaVersion: '60',
                 systemSettings: getSystemSettings(),
                 firebaseMode: getFirebaseMode(),
                 firebaseConfig: getSavedFirebaseConfig(),
@@ -6617,7 +6618,7 @@ service firebase.storage {
                     const now = new Date().toISOString();
                     localStorage.setItem('simak_last_backup_time', now);
                     setLastBackup(now);
-                    setStatusMsg('Backup berhasil dibuat dan diunduh.');
+                    setStatusMsg('Backup lokal berhasil dibuat dan diunduh.');
                 } catch (err) {
                     alert('Backup gagal dibuat.');
                 }
@@ -8138,7 +8139,7 @@ service firebase.storage {
 
 
         // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
-        const REALTIME_ENGINE_VERSION='59.2';
+        const REALTIME_ENGINE_VERSION='60';
         const realtimeLocalWriteRegistry = new Map();
 
         const registerRealtimeLocalWrite=(collectionName,docId)=>{
@@ -8330,7 +8331,7 @@ service firebase.storage {
                     actorName:auditSafeText(current?.displayName||'',120),
                     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
                     clientTime:new Date().toISOString(),
-                    appVersion:'59'
+                    appVersion:'60'
                 });
             }catch(e){
                 console.warn('Audit log gagal',e);
@@ -8355,7 +8356,7 @@ service firebase.storage {
                     actorEmail:u?.email||'',
                     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
                     clientTime:new Date().toISOString(),
-                    appVersion:'59'
+                    appVersion:'60'
                 });
             }catch(e){
                 console.warn('System event gagal',e);
@@ -8370,7 +8371,7 @@ service firebase.storage {
                     lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
                     loginCount:firebase.firestore.FieldValue.increment(1),
                     lastClient:'web',
-                    lastAppVersion:'59'
+                    lastAppVersion:'60'
                 },{merge:true});
             }catch(e){
                 console.warn('Account activity update ditolak/gagal',e);
@@ -8382,7 +8383,7 @@ service firebase.storage {
             try{
                 await firestoreInstance.collection('users').doc(authInstance.currentUser.uid).set({
                     lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
-                    lastAppVersion:'59'
+                    lastAppVersion:'60'
                 },{merge:true});
             }catch(e){}
         };
@@ -9294,6 +9295,328 @@ service firebase.storage {
             </div>;
         };
 
+
+        const FinalProductionReadinessView = () => {
+            const { user, activePeriod, realtimeStatus, cloudStatus, rawData } = useContext(AppContext);
+            const [running,setRunning]=useState(false);
+            const [checks,setChecks]=useState([]);
+            const [accountCount,setAccountCount]=useState(null);
+            const [snapshotBusy,setSnapshotBusy]=useState(false);
+            const [lastCheckpoint,setLastCheckpoint]=useState(null);
+            const [snapshotSummary,setSnapshotSummary]=useState(null);
+            const [manual,setManual]=useState(()=>{
+                try{return JSON.parse(localStorage.getItem('simak_v60_manual_readiness')||'{}');}
+                catch(e){return {};}
+            });
+
+            const role=normalizeAccessRole(user);
+            const canManage=['Kepala Sekolah','Wakil Kurikulum'].includes(role);
+
+            const setManualCheck=(id,value)=>{
+                setManual(prev=>{
+                    const next={...prev,[id]:value};
+                    localStorage.setItem('simak_v60_manual_readiness',JSON.stringify(next));
+                    return next;
+                });
+            };
+
+            const cloudCollections=[
+                'users','students','staffMaster','academicPeriods','schedules','announcements',
+                'attendanceRecords','staffAttendanceRecords','assessmentRecords','interventionRecords',
+                'mentoringRecords','leaveRequests','teachingMonitorRecords','dutyJournalRecords',
+                'supervision','learningDocuments','raporIndicators','deviceAssessments',
+                'curriculumArchives','activityPrograms','activityParticipants','activityLogs',
+                'tkaQuestions','tkaPackages','tkaAttempts','accountAdminRequests','qrAssignments',
+                'qrTokens','auditLogs','systemEvents','systemConfig'
+            ];
+
+            const serializeFirestoreValue=(value)=>{
+                if(value===null||value===undefined) return value??null;
+                if(typeof value?.toDate==='function') return {__type:'timestamp',value:value.toDate().toISOString()};
+                if(value instanceof Date) return {__type:'date',value:value.toISOString()};
+                if(Array.isArray(value)) return value.map(serializeFirestoreValue);
+                if(typeof value==='object'){
+                    const out={};
+                    Object.entries(value).forEach(([k,v])=>out[k]=serializeFirestoreValue(v));
+                    return out;
+                }
+                return value;
+            };
+
+            const downloadJson=(filename,obj)=>{
+                const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');
+                a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+            };
+
+            const runReadiness=async()=>{
+                setRunning(true);
+                const result=[];
+                const add=(id,label,ok,detail,critical=true)=>result.push({id,label,ok:!!ok,detail,critical});
+                try{
+                    const runtime=getFirebaseRuntimeStatus();
+                    add('firebase-config','Firebase config Production',runtime.configReady, runtime.configReady?runtime.mode:'Config belum lengkap');
+                    add('firebase-auth','Firebase Authentication',runtime.authReady, runtime.authReady?'Auth SDK siap':'Auth belum siap');
+                    add('firestore-sdk','Cloud Firestore',runtime.firestoreReady, runtime.firestoreReady?'Firestore SDK siap':'Firestore belum siap');
+                    add('project','Project Firebase',getSavedFirebaseConfig().projectId==='simak-sman1mantang',getSavedFirebaseConfig().projectId||'-');
+                    add('timezone','Zona waktu operasional',SIMAK_TIME_ZONE==='Asia/Jakarta',`${SIMAK_TIME_ZONE} • ${SIMAK_TIME_ZONE_LABEL}`);
+                    add('period','Periode akademik aktif',!!activePeriod,activePeriod?`${activePeriod.academicYear} • ${activePeriod.semester}`:'Tidak ada periode aktif');
+                    add('realtime','Realtime engine',realtimeStatus?.state==='live' && Number(realtimeStatus?.listenerCount||0)>0,`${realtimeStatus?.state||'-'} • ${realtimeStatus?.listenerCount||0} listener`);
+                    add('cloudstatus','Cloud session',!['error'].includes(cloudStatus?.state),cloudStatus?.message||cloudStatus?.state||'-');
+
+                    if(firestoreInstance){
+                        const started=performance.now();
+                        const ref=firestoreInstance.collection('systemConfig').doc('production_readiness_v60');
+                        await ref.set({
+                            checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                            checkedBy:user?.name||'-',
+                            checkedByUid:authInstance?.currentUser?.uid||'',
+                            appVersion:'60',
+                            activePeriodId:activePeriod?.id||null,
+                            timezone:SIMAK_TIME_ZONE,
+                            sourceUrl:location.origin
+                        },{merge:true});
+                        const snap=await ref.get();
+                        const latency=Math.round(performance.now()-started);
+                        add('rw','Firestore read/write',snap.exists,`${latency} ms`);
+                        const usersSnap=await firestoreInstance.collection('users').get();
+                        setAccountCount(usersSnap.size);
+                        add('accounts','Profil akun Production',usersSnap.size>0,`${usersSnap.size} akun`);
+                        const studentsSnap=await firestoreInstance.collection('students').get();
+                        add('students','Data murid cloud',studentsSnap.size>0,`${studentsSnap.size} murid`);
+                    }else{
+                        add('rw','Firestore read/write',false,'Firestore instance belum tersedia');
+                        add('accounts','Profil akun Production',false,'Belum dapat dibaca');
+                        add('students','Data murid cloud',false,'Belum dapat dibaca');
+                    }
+
+                    const lastBackup=localStorage.getItem('simak_last_backup_time');
+                    add('localbackup','Backup lokal tersedia',!!lastBackup,lastBackup?formatJakartaDateTime(new Date(lastBackup)):'Belum pernah backup',false);
+
+                    const criticalErrors=result.filter(x=>x.critical&&!x.ok).length;
+                    await writeAuditLog({
+                        action:'FINAL_READINESS_CHECK',
+                        module:'Production Readiness v60',
+                        collection:'systemConfig',
+                        documentId:'production_readiness_v60',
+                        detail:`${result.length-criticalErrors}/${result.length} pemeriksaan • ${criticalErrors} kegagalan kritis`
+                    });
+                }catch(e){
+                    result.push({id:'runtime-error',label:'Readiness runtime',ok:false,detail:`${e.code||''} ${e.message||e}`,critical:true});
+                    await writeSystemEvent({type:'V60_READINESS_FAILED',message:e.message||String(e),context:'FinalProductionReadinessView'});
+                }finally{
+                    setChecks(result);
+                    setRunning(false);
+                }
+            };
+
+            const createCloudSnapshot=async()=>{
+                if(!firestoreInstance || !canManage) return;
+                if(!confirm('Buat snapshot operasional Firestore sekarang?\n\nSnapshot ini membaca koleksi yang dapat diakses akun manajemen dan mengunduh JSON ke perangkat ini. Password Firebase Authentication tidak termasuk.')) return;
+                setSnapshotBusy(true);
+                const payload={
+                    app:'SIMAK SMANTANG',
+                    version:'v60',
+                    type:'operational-firestore-snapshot',
+                    projectId:getSavedFirebaseConfig().projectId,
+                    exportedAtClient:new Date().toISOString(),
+                    exportedDateWIB:getJakartaDateKey(),
+                    exportedTimeWIB:getJakartaTimeHHMMSS(),
+                    timezone:SIMAK_TIME_ZONE,
+                    exportedBy:user?.name||'-',
+                    exportedByUid:authInstance?.currentUser?.uid||'',
+                    collections:{},
+                    errors:{}
+                };
+                try{
+                    for(const name of cloudCollections){
+                        try{
+                            const snap=await firestoreInstance.collection(name).get();
+                            payload.collections[name]=snap.docs.map(d=>({id:d.id,...serializeFirestoreValue(d.data())}));
+                        }catch(e){
+                            payload.errors[name]=`${e.code||''} ${e.message||e}`.trim();
+                        }
+                    }
+                    const count=Object.values(payload.collections).reduce((s,arr)=>s+(Array.isArray(arr)?arr.length:0),0);
+                    payload.totalDocuments=count;
+                    const stamp=`${getJakartaDateKey()}_${getJakartaTimeHHMMSS().replaceAll(':','-')}`;
+                    downloadJson(`SIMAK_SMANTANG_FIRESTORE_SNAPSHOT_v60_${stamp}.json`,payload);
+                    localStorage.setItem('simak_v60_last_cloud_snapshot',new Date().toISOString());
+                    setSnapshotSummary({documents:count,collections:Object.keys(payload.collections).length,errors:Object.keys(payload.errors).length});
+                    await writeAuditLog({
+                        action:'DISASTER_RECOVERY_SNAPSHOT',
+                        module:'Disaster Recovery v60',
+                        collection:'*',
+                        documentId:'snapshot',
+                        detail:`Snapshot ${count} dokumen • ${Object.keys(payload.errors).length} error koleksi`
+                    });
+                }catch(e){
+                    alert(`Snapshot gagal: ${e.code||''} ${e.message||e}`);
+                }finally{
+                    setSnapshotBusy(false);
+                }
+            };
+
+            const createManifest=()=>{
+                const manifest={
+                    app:'SIMAK SMANTANG',
+                    version:'v60',
+                    generatedAt:new Date().toISOString(),
+                    generatedDateWIB:getJakartaDateKey(),
+                    timezone:SIMAK_TIME_ZONE,
+                    productionUrl:location.origin,
+                    firebase:{
+                        projectId:getSavedFirebaseConfig().projectId,
+                        authDomain:getSavedFirebaseConfig().authDomain,
+                        storageBucket:getSavedFirebaseConfig().storageBucket
+                    },
+                    activePeriod:activePeriod||null,
+                    systemSettings:getSystemSettings(),
+                    collections:cloudCollections,
+                    recoveryOrder:[
+                        'Restore deployment/source',
+                        'Verify Firebase project and Firestore Rules',
+                        'Restore Firestore operational data',
+                        'Verify Firebase Authentication users',
+                        'Run v60 Final Readiness Check',
+                        'Test two-device realtime',
+                        'Re-enable routine school operations'
+                    ],
+                    note:'Firebase Authentication passwords are never included in SIMAK backups.'
+                };
+                downloadJson(`SIMAK_SMANTANG_RECOVERY_MANIFEST_v60_${getJakartaDateKey()}.json`,manifest);
+            };
+
+            const saveCheckpoint=async()=>{
+                if(!firestoreInstance || !canManage) return;
+                const failed=checks.filter(c=>c.critical&&!c.ok);
+                if(!checks.length) return alert('Jalankan Final Readiness Check terlebih dahulu.');
+                if(failed.length) return alert(`Masih ada ${failed.length} pemeriksaan kritis yang belum lolos.`);
+                if(!confirm('Simpan v60 sebagai checkpoint Production siap pakai?')) return;
+                try{
+                    const ref=firestoreInstance.collection('systemConfig').doc('last_known_good');
+                    await ref.set({
+                        appVersion:'60',
+                        markedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                        markedBy:user?.name||'-',
+                        markedByUid:authInstance?.currentUser?.uid||'',
+                        productionUrl:location.origin,
+                        projectId:getSavedFirebaseConfig().projectId,
+                        activePeriodId:activePeriod?.id||null,
+                        timezone:SIMAK_TIME_ZONE
+                    },{merge:true});
+                    setLastCheckpoint({version:'60',at:new Date().toISOString()});
+                    await writeAuditLog({
+                        action:'MARK_LAST_KNOWN_GOOD',
+                        module:'Disaster Recovery v60',
+                        collection:'systemConfig',
+                        documentId:'last_known_good',
+                        detail:'v60 ditandai sebagai checkpoint Production'
+                    });
+                    alert('Checkpoint v60 berhasil disimpan.');
+                }catch(e){
+                    alert(`Checkpoint gagal: ${e.code||''} ${e.message||e}`);
+                }
+            };
+
+            const criticalFailed=checks.filter(c=>c.critical&&!c.ok).length;
+            const passed=checks.filter(c=>c.ok).length;
+            const manualItems=[
+                ['role-test','Semua role diuji setelah deploy'],
+                ['multi-device','Uji realtime minimal dua perangkat berhasil'],
+                ['qr-test','Secure QR check-in/check-out diuji'],
+                ['reset-test','Reset password akun uji berhasil'],
+                ['backup-offsite','Backup/snapshot disalin ke lokasi kedua'],
+                ['rollback-note','PIC sekolah mengetahui prosedur rollback Vercel']
+            ];
+
+            return <div className="space-y-6 animate-fade-in">
+                <div className="bg-gradient-to-r from-brand-navy via-blue-900 to-brand-sea rounded-2xl p-6 text-white shadow-lg">
+                    <p className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">FINAL PRODUCTION GATE • v60</p>
+                    <h2 className="text-2xl md:text-3xl font-bold mt-2">Production Readiness & Disaster Recovery</h2>
+                    <p className="text-sm text-white/75 mt-1">Health Check • Backup • Recovery • Rollback • Last Known Good</p>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <StatCard title="Pemeriksaan Lulus" value={checks.length?`${passed}/${checks.length}`:'-'} icon="fa-list-check" colorClass={criticalFailed?'bg-amber-500':'bg-green-600'} subtitle={checks.length?`${criticalFailed} kritis belum lolos`:'Belum diuji'} />
+                    <StatCard title="Akun Production" value={accountCount??'-'} icon="fa-users" colorClass="bg-brand-navy" subtitle="users/{uid}" />
+                    <StatCard title="Realtime" value={realtimeStatus?.state==='live'?'LIVE':String(realtimeStatus?.state||'-').toUpperCase()} icon="fa-satellite-dish" colorClass={realtimeStatus?.state==='live'?'bg-green-600':'bg-amber-500'} subtitle={`${realtimeStatus?.listenerCount||0} listener`} />
+                    <StatCard title="Periode Aktif" value={activePeriod?.semester||'-'} icon="fa-calendar-days" colorClass="bg-brand-sea" subtitle={activePeriod?.academicYear||'Belum aktif'} />
+                    <StatCard title="Zona Waktu" value="WIB" icon="fa-clock" colorClass="bg-blue-600" subtitle="Asia/Jakarta" />
+                </div>
+
+                <Card title="1. Final Production Readiness Check">
+                    <div className="flex flex-wrap gap-2">
+                        <button disabled={running} onClick={runReadiness} className="px-5 py-2.5 bg-brand-navy text-white rounded-lg text-xs font-bold disabled:opacity-50">
+                            <i className="fas fa-stethoscope mr-2"></i>{running?'Memeriksa...':'Jalankan Final Readiness Check'}
+                        </button>
+                        <button disabled={!checks.length||criticalFailed>0} onClick={saveCheckpoint} className="px-5 py-2.5 border border-green-300 text-green-700 rounded-lg text-xs font-bold disabled:opacity-40">
+                            <i className="fas fa-shield-circle-check mr-2"></i>Tandai sebagai Last Known Good
+                        </button>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                        {checks.map(c=><div key={c.id} className={`border rounded-xl p-3 ${c.ok?'bg-green-50 border-green-100':'bg-red-50 border-red-100'}`}>
+                            <div className="flex items-start gap-2">
+                                <i className={`fas ${c.ok?'fa-circle-check text-green-600':'fa-circle-xmark text-red-600'} mt-0.5`}></i>
+                                <div><p className="text-xs font-bold">{c.label}</p><p className="text-[10px] text-gray-500 mt-1">{c.detail}</p>{!c.critical&&<p className="text-[9px] text-gray-400 mt-1">Non-kritis</p>}</div>
+                            </div>
+                        </div>)}
+                        {!checks.length&&<p className="text-sm text-gray-400">Belum ada hasil pemeriksaan.</p>}
+                    </div>
+                </Card>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <Card title="2. Backup & Recovery Artifacts">
+                        <div className="space-y-3">
+                            <button disabled={snapshotBusy||!canManage} onClick={createCloudSnapshot} className="w-full py-3 bg-brand-sea text-white rounded-xl text-xs font-bold disabled:opacity-40">
+                                <i className="fas fa-cloud-arrow-down mr-2"></i>{snapshotBusy?'Membuat Snapshot...':'Unduh Snapshot Operasional Firestore'}
+                            </button>
+                            <button onClick={createManifest} className="w-full py-3 border border-brand-navy text-brand-navy rounded-xl text-xs font-bold">
+                                <i className="fas fa-file-shield mr-2"></i>Unduh Recovery Manifest
+                            </button>
+                            {snapshotSummary&&<div className="bg-green-50 border border-green-100 rounded-xl p-3 text-xs text-green-800">
+                                Snapshot terakhir sesi ini: <b>{snapshotSummary.documents}</b> dokumen • {snapshotSummary.collections} koleksi • {snapshotSummary.errors} error.
+                            </div>}
+                            <p className="text-[10px] text-gray-400">Snapshot browser adalah backup operasional Firestore. Password Firebase Authentication tidak dapat dan tidak boleh diekspor.</p>
+                        </div>
+                    </Card>
+
+                    <Card title="3. Verifikasi Manual Sebelum Final">
+                        <div className="space-y-2">
+                            {manualItems.map(([id,label])=><label key={id} className="flex items-center gap-3 p-3 border rounded-xl cursor-pointer">
+                                <input type="checkbox" checked={!!manual[id]} onChange={e=>setManualCheck(id,e.target.checked)} />
+                                <span className="text-xs font-semibold">{label}</span>
+                            </label>)}
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-3">Checklist manual disimpan hanya di browser administrator. Gunakan dokumen checklist v60 sebagai bukti operasional sekolah.</p>
+                    </Card>
+                </div>
+
+                <Card title="4. Urutan Pemulihan Darurat">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {[
+                            ['1','Rollback Deployment','Di Vercel pilih deployment terakhir yang stabil lalu Promote/Redeploy.'],
+                            ['2','Validasi Firebase','Pastikan project simak-sman1mantang, Auth, Firestore, dan Rules aktif.'],
+                            ['3','Pulihkan Data','Gunakan snapshot/export Admin SDK terbaru; jangan menimpa data tanpa salinan cadangan.'],
+                            ['4','Validasi Akun','Pastikan profil users/{uid} dan akun Firebase Authentication konsisten.'],
+                            ['5','Health Check','Jalankan Final Readiness Check dan Audit Monitoring.'],
+                            ['6','Uji Operasional','Uji login role, dua perangkat, Secure QR, nilai, izin, dan laporan.']
+                        ].map(([n,title,desc])=><div key={n} className="border rounded-xl p-4">
+                            <div className="w-8 h-8 rounded-full bg-brand-navy text-white flex items-center justify-center font-bold text-xs">{n}</div>
+                            <p className="font-bold text-sm mt-3">{title}</p>
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{desc}</p>
+                        </div>)}
+                    </div>
+                </Card>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 leading-relaxed">
+                    <i className="fas fa-triangle-exclamation mr-2"></i>
+                    Jangan melakukan restore Production hanya karena satu halaman bermasalah. Prioritas pemulihan: rollback source terlebih dahulu, verifikasi koneksi Firebase, baru restore data jika bukti menunjukkan data cloud benar-benar rusak/hilang.
+                </div>
+            </div>;
+        };
+
         const ProductionMonitoringView = () => {
             const { user, activePeriod, cloudStatus } = useContext(AppContext);
             const [loading,setLoading]=useState(false);
@@ -9337,7 +9660,7 @@ service firebase.storage {
                         checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
                         checkedBy:user?.name||'-',
                         checkedByUid:user?.uid||'',
-                        appVersion:'59',
+                        appVersion:'60',
                         academicPeriod:activePeriod?.id||null
                     },{merge:true});
                     const snap=await ref.get();
@@ -10975,12 +11298,12 @@ service firebase.storage {
             'Kepala Sekolah': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56','realtime57'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56','realtime57','readiness60'
             ],
             'Wakil Kurikulum': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56','realtime57'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56','realtime57','readiness60'
             ],
             'Guru': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','rekapabsensi','rekapqr','kartuid','checkio','izin','nilai','remedial','tka','kelas','murid',
@@ -11095,6 +11418,7 @@ service firebase.storage {
                 { id: 'laporan', label: 'Pusat Laporan & Ekspor', icon: 'fa-file-export' },
                 { id: 'laporanbulanan', label: 'Laporan Bulanan Kepala Sekolah', icon: 'fa-file-lines' },
                 { id: 'backup', label: 'Backup & Restore', icon: 'fa-database' },
+                { id: 'readiness60', label: 'Final Readiness & Recovery', icon: 'fa-shield-circle-check' },
                 { id: 'auditakses', label: 'Audit Akun & Hak Akses', icon: 'fa-user-shield' },
             ];
 
@@ -11125,7 +11449,7 @@ service firebase.storage {
                 },
                 {
                     id:'sistem', label:'Sistem & Integrasi', icon:'fa-gears',
-                    items:['pengaturan','firebase','firebase51','golive52','monitoring54','qrsecurity55','realtime57','auditv49']
+                    items:['pengaturan','firebase','firebase51','golive52','monitoring54','qrsecurity55','realtime57','readiness60','auditv49']
                 }
             ];
 
@@ -11328,7 +11652,7 @@ service firebase.storage {
                                             ? (studentNavItems.find(i=>i.id===view)?.label || 'Beranda')
                                             : (staffNavItems.find(i=>i.id===view)?.label || 'Dashboard'))}
                                 </span>
-                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v59.2</span>
+                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v60</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="text-right hidden lg:block">
@@ -11344,7 +11668,7 @@ service firebase.storage {
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
                                 <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v59.2</span>
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v60</span>
                                 <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
                                 <span className="hidden md:inline text-gray-400">• WIB</span>
                             </div>
@@ -11812,7 +12136,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','59.2');
+                    localStorage.setItem('simak_schema_version','60');
                 }catch(e){}
             },[rawData]);
 
@@ -11850,7 +12174,7 @@ service firebase.storage {
             }
 
             if(authLoading){
-                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v59.2</p></div></div>;
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v60</p></div></div>;
             }
 
             if(!user){
@@ -11901,6 +12225,7 @@ service firebase.storage {
                     case 'monitoring54': return <ProductionMonitoringView />;
                     case 'account56': return <AccountManagementView />;
                     case 'realtime57': return <RealtimeSyncView />;
+                    case 'readiness60': return <FinalProductionReadinessView />;
                     case 'supervisi': return <SupervisiView />;
                     case 'rapor': return <RaporPendidikanView />;
                     default: return <PlaceholderView title="Modul SIMAK" icon="fa-tools" />;
