@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v52.2 - Go-Live Bootstrap Fix</title>
+    <title>SIMAK SMANTANG v53 - Bulk Account Provisioning</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1643,10 +1643,13 @@ service firebase.storage {
                 const trimmedInput=identityInput.trim().toLowerCase();
                 try{
                     if(productionMode){
-                        if(!authInstance||!firestoreInstance) throw new Error('Firebase belum siap. Pastikan konfigurasi v50 sudah benar.');
-                        if(!trimmedInput.includes('@')) throw new Error('Mode produksi menggunakan email akun Firebase Authentication.');
+                        if(!authInstance||!firestoreInstance) throw new Error('Firebase belum siap. Pastikan konfigurasi Firebase sudah benar.');
                         if(!password) throw new Error('Masukkan password Firebase Authentication.');
-                        await authInstance.signInWithEmailAndPassword(trimmedInput,password);
+                        const authIdentity = trimmedInput.includes('@')
+                            ? trimmedInput
+                            : (/^\d{10}$/.test(trimmedInput) ? `${trimmedInput}@murid.simak-smantang.invalid` : trimmedInput);
+                        if(!authIdentity.includes('@')) throw new Error('Masukkan email akun Firebase atau NISN 10 digit untuk akun murid.');
+                        await authInstance.signInWithEmailAndPassword(authIdentity,password);
                         setMessage('Autentikasi berhasil. Memuat profil dan data Firestore...');
                     }else{
                         handlePrototypeLogin(trimmedInput);
@@ -1704,8 +1707,8 @@ service firebase.storage {
                             </div>}
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">{productionMode?'Email Firebase Authentication':(isStudentLogin?'NISN atau Email':isParentLogin?'NISN Anak':'Email belajar.id')}</label>
-                                <input type="text" value={identityInput} onChange={e=>setIdentityInput(e.target.value)} required className="w-full border rounded-lg p-2.5 text-sm" placeholder={productionMode?'nama@domain.sch.id':'Masukkan identitas akun'}/>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">{productionMode?'Email Firebase / NISN Murid':(isStudentLogin?'NISN atau Email':isParentLogin?'NISN Anak':'Email belajar.id')}</label>
+                                <input type="text" value={identityInput} onChange={e=>setIdentityInput(e.target.value)} required className="w-full border rounded-lg p-2.5 text-sm" placeholder={productionMode?'Email pegawai atau NISN 10 digit murid':'Masukkan identitas akun'}/>
                             </div>
 
                             <div>
@@ -1729,7 +1732,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v52.2 • Go-Live Bootstrap Fix • Secure Migration • Firestore Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v53 • Bulk Account Provisioning • NISN Login • Firebase Production</span>
                         </div>
                     </div>
                 </div>
