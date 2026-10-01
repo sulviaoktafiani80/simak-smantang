@@ -31,7 +31,31 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isManagement());
-      allow create, update, delete: if isManagement();
+
+      // Manajemen dapat mengelola profil penuh.
+      allow create, delete: if isManagement();
+      allow update: if isManagement()
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastLoginAt','lastSeenAt','loginCount','lastClient','lastAppVersion'
+          ])
+        );
+    }
+
+    match /auditLogs/{id} {
+      allow create: if active();
+      allow read: if isManagement();
+      allow update: if false;
+      allow delete: if roleIs('Kepala Sekolah');
+    }
+
+    match /systemEvents/{id} {
+      allow create: if active();
+      allow read: if isManagement();
+      allow update: if false;
+      allow delete: if roleIs('Kepala Sekolah');
     }
 
     match /students/{studentId} {
@@ -83,9 +107,9 @@ service cloud.firestore {
     }
 
     match /mentoringRecords/{id} {
-      allow read: if isStaff() ||
-        (resource.data.visibility == 'Orang Tua' &&
-          (ownStudent(resource.data.studentId) || parentOf(resource.data.studentId)));
+      allow read: if isStaff()
+        || (resource.data.visibility == 'Orang Tua'
+          && (ownStudent(resource.data.studentId) || parentOf(resource.data.studentId)));
       allow create, update: if isTeachingStaff();
       allow delete: if isManagement();
     }

@@ -1,0 +1,18 @@
+SIMAK SMANTANG v54 — PRODUCTION MONITORING CHECKLIST
+
+[ ] index.html v54 terdeploy ke Vercel
+[ ] firestore.rules v54 dipublish di Firebase Console
+[ ] Login Wakil Kurikulum berhasil
+[ ] Login Kepala Sekolah berhasil
+[ ] Menu Audit & Monitoring Produksi tersedia untuk manajemen
+[ ] Health Check berstatus Sehat
+[ ] audit LOGIN tercatat
+[ ] audit LOGOUT tercatat
+[ ] loginCount bertambah
+[ ] lastLoginAt terisi
+[ ] lastSeenAt terisi
+[ ] Audit perubahan data tercatat
+[ ] Error 24 Jam dapat dipantau
+[ ] Ekspor Audit CSV berhasil
+[ ] Ekspor Aktivitas Akun berhasil
+[ ] Guru/Murid tidak dapat membaca dashboard monitoring

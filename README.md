@@ -1,90 +1,41 @@
-# SIMAK SMANTANG v53 — Bulk Account Provisioning
+# SIMAK SMANTANG v54 — Audit Log & Production Monitoring
 
-Paket ini menyiapkan provisioning massal Firebase Authentication + Firestore untuk:
-- 20 pegawai;
-- 146 murid;
-- total 166 profil.
+## Fitur v54
+- Audit login/logout.
+- Audit metadata perubahan data yang tersinkron ke Firestore.
+- `lastLoginAt`, `lastSeenAt`, `loginCount` pada profil akun.
+- Monitoring akun aktif 7 hari dan akun yang belum pernah login.
+- Pencatatan client error / unhandled rejection ke `systemEvents`.
+- Health check read/write Firestore.
+- Dashboard Audit & Monitoring Produksi.
+- Filter audit dan ekspor CSV.
+- Ekspor aktivitas akun.
+- Security Rules khusus `auditLogs`, `systemEvents`, dan update aktivitas akun sendiri.
 
-Dua akun yang sudah ada (Kepala Sekolah dan Wakil Kurikulum) **tidak dihapus**. Script akan menemukan akun berdasarkan email dan mempertahankan password lama, kecuali `RESET_EXISTING_PASSWORDS=true`.
+## Sangat penting setelah deploy
+`index.html` saja tidak cukup. Publish juga file `firestore.rules` v54 melalui:
 
-## Strategi Login Murid
+Firebase Console → Firestore Database → Rules → paste → Publish.
 
-Data SIMAK belum memiliki email nyata murid. Karena itu akun Auth murid menggunakan alias internal:
+Tanpa Rules v54:
+- login aplikasi tetap dapat bekerja;
+- tetapi `lastLoginAt`, `auditLogs`, dan `systemEvents` dapat ditolak oleh Rules lama.
 
-`NISN@murid.simak-smantang.invalid`
+## Deploy
+Upload ke repository GitHub:
+- `index.html`
+- `firestore.rules`
+- `storage.rules` (boleh disimpan di repo; Storage masih opsional)
+- `vercel.json`
+- `README.md`
 
-SIMAK v53 mengubah input NISN 10 digit menjadi alias tersebut secara otomatis. Murid cukup login menggunakan:
-- NISN
-- password sementara
+Jangan upload service account atau file password.
 
-Alias `.invalid` sengaja tidak dapat menerima email. Artinya reset password mandiri via email belum tersedia untuk murid. Reset murid dilakukan admin sampai sekolah menetapkan akun email resmi.
-
-## Orang Tua/Wali
-
-Belum diprovisioning massal karena data sumber saat ini tidak menyediakan email/akun orang tua yang valid dan unik.
-
-## Cara Menjalankan
-
-### 1. Service Account
-Firebase Console → Project settings → Service accounts → Generate new private key.
-
-Simpan hasilnya sebagai:
-
-`serviceAccountKey.json`
-
-di folder ini.
-
-**Jangan upload file tersebut ke GitHub.**
-
-### 2. Install Node.js
-Gunakan Node.js 20+.
-
-### 3. Install dependency
-
-```bash
-npm install
-```
-
-### 4. Jalankan provisioning
-
-```bash
-npm run provision
-```
-
-### 5. Hasil
-
-Folder `output/` akan berisi:
-- `provisioning-results.csv`
-- `temporary-credentials.csv`
-
-`temporary-credentials.csv` berisi password sementara akun baru. Simpan secara aman dan jangan commit ke GitHub.
-
-## Role
-
-- 1 Kepala Sekolah → `Kepala Sekolah`
-- 1 Wakil Kurikulum → `Wakil Kurikulum`
-- 13 guru/waka lain/kepala lab/kepala perpustakaan/BK → `Guru`
-- 5 Kepala TU/TAS/Tendik → `Tenaga Kependidikan`
-- 146 murid → `Murid`
-
-## Catatan Password
-
-Script menghasilkan password acak kuat untuk akun baru. Password akun yang sudah ada tidak diubah secara default.
-
-Untuk mereset juga password akun yang sudah ada:
-
-Windows PowerShell:
-```powershell
-$env:RESET_EXISTING_PASSWORDS="true"
-npm run provision
-```
-
-Gunakan opsi ini hanya jika memang diperlukan.
-
-## Setelah Provisioning
-
-1. Deploy `index.html` v53 ke GitHub/Vercel.
-2. Uji login satu akun Guru.
-3. Uji satu akun Tendik.
-4. Uji murid dengan NISN + password dari credentials CSV.
-5. Setelah lolos, distribusikan kredensial secara individual.
+## Verifikasi
+1. Login Wakil Kurikulum.
+2. Buka **Audit & Monitoring Produksi**.
+3. Klik **Jalankan Health Check**.
+4. Logout lalu login kembali.
+5. Refresh dashboard monitoring.
+6. Pastikan loginCount bertambah dan audit LOGIN/LOGOUT muncul.
+7. Lakukan satu perubahan data non-kritis lalu pastikan audit UPSERT tercatat.

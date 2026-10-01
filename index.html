@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v53 - Bulk Account Provisioning</title>
+    <title>SIMAK SMANTANG v54 - Audit Log & Production Monitoring</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1732,7 +1732,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v53 • Bulk Account Provisioning • NISN Login • Firebase Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v54 • Audit Log • Production Monitoring • Firebase Production</span>
                         </div>
                     </div>
                 </div>
@@ -2205,6 +2205,7 @@ service firebase.storage {
                             ['fa-fire','Firebase','firebase'],
                             ['fa-cloud-arrow-up','Migrasi v51','firebase51'],
                             ['fa-rocket','Go-Live v52','golive52'],
+                            ['fa-chart-line','Monitoring v54','monitoring54'],
                         ].map(([icon,label,view])=><button key={view} onClick={()=>setView(view)} className="p-3 border rounded-xl text-xs font-semibold hover:bg-blue-50 hover:border-brand-sea"><i className={`fas ${icon} block text-lg text-brand-sea mb-2`}></i>{label}</button>)}
                     </div>
                 </Card>
@@ -5762,7 +5763,7 @@ service firebase.storage {
                 tka:'TKA & Bank Soal', kelas:'Data Kelas', murid:'Data Murid', guruwali:'Dashboard Guru Wali', earlywarning:'Early Warning Murid', kegiatan:'Kegiatan',
                 perangkat:'Perangkat Ajar', periode:'Tahun Ajaran/Semester', bebanmengajar:'Beban Mengajar',
                 supervisi:'Supervisi Akademik', rapor:'Rapor Pendidikan/PBD', arsip:'Arsip Kurikulum', pegawai:'Data Pegawai',
-                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live'
+                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi'
             };
 
             const sensitiveViews = ['nilai','perangkat','periode','supervisi','rapor','pegawai','backup','auditakses'];
@@ -7784,6 +7785,27 @@ service firebase.storage {
                 }
             }
             if(ops>0) await batch.commit();
+
+            for(const item of changed.slice(0,25)){
+                await writeAuditLog({
+                    action:item.type==='delete'?'DELETE':'UPSERT',
+                    module:'Sinkronisasi Data',
+                    collection:collectionName,
+                    documentId:item.id,
+                    detail:`Perubahan ${localKey} disinkronkan ke Firestore`,
+                    severity:'info'
+                });
+            }
+            if(changed.length>25){
+                await writeAuditLog({
+                    action:'BULK_SYNC',
+                    module:'Sinkronisasi Data',
+                    collection:collectionName,
+                    documentId:'*',
+                    detail:`${changed.length} perubahan; audit rinci dibatasi 25 item`,
+                    severity:'info'
+                });
+            }
         };
 
         const buildFirebaseSessionProfile = (fbUser, profileData) => ({
@@ -7804,6 +7826,109 @@ service firebase.storage {
             authProvider:'firebase',
             photo:profileData.photo||`https://placehold.co/150x150/0a2472/ffffff?text=${encodeURIComponent((profileData.name||'SM').substring(0,2).toUpperCase())}`
         });
+
+
+        const AUDIT_COLLECTION = 'auditLogs';
+        const SYSTEM_EVENT_COLLECTION = 'systemEvents';
+
+        const auditSafeText = (value, max=180) => String(value ?? '').replace(/\s+/g,' ').trim().slice(0,max);
+
+        const writeAuditLog = async ({
+            action='UPDATE',
+            module='SIMAK',
+            collection='',
+            documentId='',
+            detail='',
+            severity='info',
+            actor=null
+        }={}) => {
+            if(!firestoreInstance || !authInstance?.currentUser) return;
+            const current=actor || authInstance.currentUser;
+            try{
+                await firestoreInstance.collection(AUDIT_COLLECTION).add({
+                    action:auditSafeText(action,40),
+                    module:auditSafeText(module,80),
+                    collection:auditSafeText(collection,80),
+                    documentId:auditSafeText(documentId,240),
+                    detail:auditSafeText(detail,240),
+                    severity:auditSafeText(severity,20),
+                    actorUid:current?.uid||'',
+                    actorEmail:current?.email||'',
+                    actorName:auditSafeText(current?.displayName||'',120),
+                    createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    clientTime:new Date().toISOString(),
+                    appVersion:'54'
+                });
+            }catch(e){
+                console.warn('Audit log gagal',e);
+            }
+        };
+
+        const writeSystemEvent = async ({
+            type='CLIENT_ERROR',
+            message='',
+            context='',
+            severity='error'
+        }={}) => {
+            if(!firestoreInstance || !authInstance?.currentUser) return;
+            try{
+                const u=authInstance.currentUser;
+                await firestoreInstance.collection(SYSTEM_EVENT_COLLECTION).add({
+                    type:auditSafeText(type,60),
+                    message:auditSafeText(message,500),
+                    context:auditSafeText(context,240),
+                    severity:auditSafeText(severity,20),
+                    actorUid:u?.uid||'',
+                    actorEmail:u?.email||'',
+                    createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    clientTime:new Date().toISOString(),
+                    appVersion:'54'
+                });
+            }catch(e){
+                console.warn('System event gagal',e);
+            }
+        };
+
+        const updateAccountActivity = async (fbUser, profileData={}) => {
+            if(!firestoreInstance || !fbUser?.uid) return;
+            try{
+                await firestoreInstance.collection('users').doc(fbUser.uid).set({
+                    lastLoginAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    loginCount:firebase.firestore.FieldValue.increment(1),
+                    lastClient:'web',
+                    lastAppVersion:'54'
+                },{merge:true});
+            }catch(e){
+                console.warn('Account activity update ditolak/gagal',e);
+            }
+        };
+
+        const markAccountSeen = async () => {
+            if(!firestoreInstance || !authInstance?.currentUser?.uid) return;
+            try{
+                await firestoreInstance.collection('users').doc(authInstance.currentUser.uid).set({
+                    lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    lastAppVersion:'54'
+                },{merge:true});
+            }catch(e){}
+        };
+
+        const tsToDate = (v) => {
+            try{
+                if(!v) return null;
+                if(typeof v.toDate==='function') return v.toDate();
+                if(v.seconds) return new Date(v.seconds*1000);
+                const d=new Date(v);
+                return isNaN(d)?null:d;
+            }catch(e){return null;}
+        };
+
+        const formatMonitorDate = (v) => {
+            const d=tsToDate(v);
+            if(!d) return '-';
+            return d.toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'});
+        };
 
         const V51_MIGRATION_COLLECTION_KEYS = [
             'academicPeriods',
@@ -8095,6 +8220,215 @@ service firebase.storage {
         };
 
 
+
+
+        const ProductionMonitoringView = () => {
+            const { user, activePeriod, cloudStatus } = useContext(AppContext);
+            const [loading,setLoading]=useState(false);
+            const [audits,setAudits]=useState([]);
+            const [events,setEvents]=useState([]);
+            const [accounts,setAccounts]=useState([]);
+            const [health,setHealth]=useState({status:'Belum diuji',message:'-'});
+            const [query,setQuery]=useState('');
+            const [collectionFilter,setCollectionFilter]=useState('Semua');
+            const [actionFilter,setActionFilter]=useState('Semua');
+
+            const loadMonitoring=async()=>{
+                if(!firestoreInstance) return;
+                setLoading(true);
+                try{
+                    const [auditSnap,eventSnap,userSnap]=await Promise.all([
+                        firestoreInstance.collection(AUDIT_COLLECTION).orderBy('createdAt','desc').limit(200).get(),
+                        firestoreInstance.collection(SYSTEM_EVENT_COLLECTION).orderBy('createdAt','desc').limit(100).get(),
+                        firestoreInstance.collection('users').get()
+                    ]);
+                    setAudits(auditSnap.docs.map(d=>({id:d.id,...d.data()})));
+                    setEvents(eventSnap.docs.map(d=>({id:d.id,...d.data()})));
+                    setAccounts(userSnap.docs.map(d=>({uid:d.id,...d.data()})));
+                }catch(e){
+                    await writeSystemEvent({type:'MONITORING_LOAD_FAILED',message:e.message||String(e),context:'ProductionMonitoringView'});
+                    alert(`Monitoring gagal dimuat: ${e.code||''} ${e.message||e}`);
+                }finally{
+                    setLoading(false);
+                }
+            };
+
+            useEffect(()=>{loadMonitoring();},[]);
+
+            const runHealthCheck=async()=>{
+                if(!firestoreInstance) return;
+                setLoading(true);
+                const started=performance.now();
+                try{
+                    const ref=firestoreInstance.collection('systemConfig').doc('production_health_v54');
+                    await ref.set({
+                        checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                        checkedBy:user?.name||'-',
+                        checkedByUid:user?.uid||'',
+                        appVersion:'54',
+                        academicPeriod:activePeriod?.id||null
+                    },{merge:true});
+                    const snap=await ref.get();
+                    const latency=Math.round(performance.now()-started);
+                    setHealth({
+                        status:snap.exists?'Sehat':'Periksa',
+                        message:`Firestore read/write ${latency} ms • ${formatMonitorDate(new Date())}`,
+                        latency
+                    });
+                    await writeAuditLog({
+                        action:'HEALTH_CHECK',
+                        module:'Production Monitoring',
+                        collection:'systemConfig',
+                        documentId:'production_health_v54',
+                        detail:`Health check berhasil ${latency} ms`
+                    });
+                }catch(e){
+                    setHealth({status:'Gangguan',message:`${e.code||''} ${e.message||e}`});
+                    await writeSystemEvent({type:'HEALTH_CHECK_FAILED',message:e.message||String(e),context:'production_health_v54'});
+                }finally{setLoading(false);}
+            };
+
+            const now=Date.now();
+            const active7d=accounts.filter(a=>{
+                const d=tsToDate(a.lastSeenAt||a.lastLoginAt);
+                return d && (now-d.getTime()) <= 7*86400000;
+            }).length;
+            const neverLogin=accounts.filter(a=>!a.lastLoginAt).length;
+            const disabled=accounts.filter(a=>a.active===false).length;
+            const error24h=events.filter(e=>{
+                const d=tsToDate(e.createdAt||e.clientTime);
+                return d && (now-d.getTime()) <= 86400000 && String(e.severity||'').toLowerCase()==='error';
+            }).length;
+
+            const collections=['Semua',...Array.from(new Set(audits.map(a=>a.collection).filter(Boolean))).sort()];
+            const actions=['Semua',...Array.from(new Set(audits.map(a=>a.action).filter(Boolean))).sort()];
+            const q=query.trim().toLowerCase();
+            const filteredAudits=audits.filter(a=>{
+                if(collectionFilter!=='Semua'&&a.collection!==collectionFilter) return false;
+                if(actionFilter!=='Semua'&&a.action!==actionFilter) return false;
+                if(!q) return true;
+                return [a.actorName,a.actorEmail,a.action,a.module,a.collection,a.documentId,a.detail]
+                    .some(v=>String(v||'').toLowerCase().includes(q));
+            });
+
+            const exportAuditCsv=()=>{
+                const fields=['createdAt','actorName','actorEmail','action','module','collection','documentId','detail','severity'];
+                const esc=v=>`"${String(v??'').replaceAll('"','""')}"`;
+                const lines=[fields.join(',')];
+                filteredAudits.forEach(r=>{
+                    const row={...r,createdAt:formatMonitorDate(r.createdAt||r.clientTime)};
+                    lines.push(fields.map(f=>esc(row[f])).join(','));
+                });
+                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AUDIT_LOG_${new Date().toISOString().slice(0,10)}.csv`,'text/csv;charset=utf-8');
+                writeAuditLog({action:'EXPORT',module:'Production Monitoring',collection:AUDIT_COLLECTION,documentId:'*',detail:`Ekspor ${filteredAudits.length} audit log`});
+            };
+
+            const exportAccountsCsv=()=>{
+                const fields=['uid','name','email','role','localId','active','lastLoginAt','lastSeenAt','loginCount'];
+                const esc=v=>`"${String(v??'').replaceAll('"','""')}"`;
+                const lines=[fields.join(',')];
+                accounts.forEach(r=>{
+                    const row={...r,lastLoginAt:formatMonitorDate(r.lastLoginAt),lastSeenAt:formatMonitorDate(r.lastSeenAt)};
+                    lines.push(fields.map(f=>esc(row[f])).join(','));
+                });
+                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AKTIVITAS_AKUN_${new Date().toISOString().slice(0,10)}.csv`,'text/csv;charset=utf-8');
+            };
+
+            return <div className="space-y-6 animate-fade-in">
+                <div className="bg-gradient-to-r from-brand-navy via-blue-900 to-brand-sea rounded-2xl p-6 text-white shadow-lg">
+                    <div className="flex flex-col lg:flex-row justify-between gap-5">
+                        <div>
+                            <span className="inline-flex px-3 py-1 rounded-full bg-white/90 text-brand-navy text-[10px] font-bold uppercase tracking-widest">Production Observability</span>
+                            <h2 className="text-2xl md:text-3xl font-bold mt-3">Audit Log & Production Monitoring</h2>
+                            <p className="text-sm text-white/80 mt-1">Aktivitas akun • Perubahan data • Error sinkronisasi • Health Check</p>
+                        </div>
+                        <div className="bg-white/10 border border-white/20 rounded-2xl p-4 min-w-[260px]">
+                            <p className="text-[10px] uppercase tracking-wider text-white/60">Status Cloud</p>
+                            <p className="font-bold mt-1">{cloudStatus?.state==='error'?'Perlu Perhatian':'Production'}</p>
+                            <p className="text-xs text-brand-gold mt-1">{cloudStatus?.message||'Firestore terhubung'}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <StatCard title="Total Akun" value={accounts.length} icon="fa-users" colorClass="bg-brand-navy" subtitle="users/{uid}" />
+                    <StatCard title="Aktif 7 Hari" value={active7d} icon="fa-user-check" colorClass="bg-brand-sea" subtitle="lastSeen/login" />
+                    <StatCard title="Belum Pernah Login" value={neverLogin} icon="fa-user-clock" colorClass="bg-amber-500" subtitle="perlu onboarding" />
+                    <StatCard title="Nonaktif" value={disabled} icon="fa-user-slash" colorClass="bg-gray-500" subtitle="active=false" />
+                    <StatCard title="Error 24 Jam" value={error24h} icon="fa-triangle-exclamation" colorClass={error24h?'bg-red-600':'bg-green-600'} subtitle="systemEvents" />
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <Card title="Health Check Firestore" className="xl:col-span-1">
+                        <div className={`rounded-xl p-4 border ${health.status==='Sehat'?'bg-green-50 border-green-200':health.status==='Gangguan'?'bg-red-50 border-red-200':'bg-gray-50 border-gray-200'}`}>
+                            <p className="font-bold text-brand-navy">{health.status}</p>
+                            <p className="text-xs text-gray-600 mt-1">{health.message}</p>
+                        </div>
+                        <button disabled={loading} onClick={runHealthCheck} className="mt-4 w-full py-2.5 bg-brand-sea text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-heart-pulse mr-2"></i>Jalankan Health Check</button>
+                    </Card>
+
+                    <Card title="Kontrol Monitoring" className="xl:col-span-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari aktor, modul, dokumen..." className="border rounded-lg p-2.5 text-sm"/>
+                            <select value={collectionFilter} onChange={e=>setCollectionFilter(e.target.value)} className="border rounded-lg p-2.5 text-sm">{collections.map(x=><option key={x}>{x}</option>)}</select>
+                            <select value={actionFilter} onChange={e=>setActionFilter(e.target.value)} className="border rounded-lg p-2.5 text-sm">{actions.map(x=><option key={x}>{x}</option>)}</select>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            <button disabled={loading} onClick={loadMonitoring} className="px-4 py-2 bg-brand-navy text-white rounded-lg text-xs font-bold"><i className="fas fa-rotate mr-2"></i>Refresh Monitoring</button>
+                            <button onClick={exportAuditCsv} className="px-4 py-2 border border-brand-sea text-brand-sea rounded-lg text-xs font-bold"><i className="fas fa-file-csv mr-2"></i>Ekspor Audit CSV</button>
+                            <button onClick={exportAccountsCsv} className="px-4 py-2 border border-brand-green text-brand-green rounded-lg text-xs font-bold"><i className="fas fa-users-gear mr-2"></i>Ekspor Aktivitas Akun</button>
+                        </div>
+                    </Card>
+                </div>
+
+                <Card title={`Audit Trail Terbaru (${filteredAudits.length})`}>
+                    <div className="overflow-x-auto max-h-[520px]">
+                        <table className="w-full text-xs">
+                            <thead className="bg-gray-50 sticky top-0"><tr>
+                                <th className="px-3 py-3 text-left">Waktu</th><th className="px-3 py-3 text-left">Aktor</th>
+                                <th className="px-3 py-3 text-left">Aksi</th><th className="px-3 py-3 text-left">Koleksi</th>
+                                <th className="px-3 py-3 text-left">Dokumen</th><th className="px-3 py-3 text-left">Keterangan</th>
+                            </tr></thead>
+                            <tbody>{filteredAudits.length?filteredAudits.map(a=><tr key={a.id} className="border-b hover:bg-gray-50">
+                                <td className="px-3 py-3 whitespace-nowrap">{formatMonitorDate(a.createdAt||a.clientTime)}</td>
+                                <td className="px-3 py-3"><p className="font-semibold">{a.actorName||a.actorEmail||'-'}</p><p className="text-[10px] text-gray-400">{a.actorEmail||''}</p></td>
+                                <td className="px-3 py-3"><span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold">{a.action||'-'}</span></td>
+                                <td className="px-3 py-3">{a.collection||'-'}</td>
+                                <td className="px-3 py-3 font-mono text-[10px]">{a.documentId||'-'}</td>
+                                <td className="px-3 py-3 text-gray-600">{a.detail||'-'}</td>
+                            </tr>):<tr><td colSpan="6" className="text-center py-8 text-gray-400">Audit log belum tersedia. Aktivitas baru setelah v54 akan mulai tercatat.</td></tr>}</tbody>
+                        </table>
+                    </div>
+                </Card>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <Card title={`System Events / Error (${events.length})`}>
+                        <div className="space-y-2 max-h-[420px] overflow-auto">
+                            {events.length?events.map(e=><div key={e.id} className={`rounded-lg border p-3 ${String(e.severity).toLowerCase()==='error'?'bg-red-50 border-red-100':'bg-gray-50 border-gray-100'}`}>
+                                <div className="flex justify-between gap-3"><p className="font-bold text-xs">{e.type||'EVENT'}</p><span className="text-[10px] text-gray-400">{formatMonitorDate(e.createdAt||e.clientTime)}</span></div>
+                                <p className="text-xs text-gray-600 mt-1">{e.message||'-'}</p>
+                                {e.context&&<p className="text-[10px] text-gray-400 mt-1">{e.context}</p>}
+                            </div>):<p className="text-sm text-gray-400">Belum ada system event.</p>}
+                        </div>
+                    </Card>
+
+                    <Card title={`Aktivitas Akun (${accounts.length})`}>
+                        <div className="overflow-x-auto max-h-[420px]">
+                            <table className="w-full text-xs"><thead className="bg-gray-50 sticky top-0"><tr><th className="px-3 py-3 text-left">Nama</th><th className="px-3 py-3 text-left">Role</th><th className="px-3 py-3 text-left">Login Terakhir</th><th className="px-3 py-3 text-right">Login</th></tr></thead>
+                            <tbody>{accounts.sort((a,b)=>{
+                                const da=tsToDate(a.lastLoginAt)?.getTime()||0, db=tsToDate(b.lastLoginAt)?.getTime()||0;
+                                return db-da;
+                            }).map(a=><tr key={a.uid} className="border-b"><td className="px-3 py-3"><p className="font-semibold">{a.name||'-'}</p><p className="text-[10px] text-gray-400">{a.email||a.nisn||''}</p></td><td className="px-3 py-3">{a.role||'-'}</td><td className="px-3 py-3">{formatMonitorDate(a.lastLoginAt)}</td><td className="px-3 py-3 text-right font-bold">{a.loginCount||0}</td></tr>)}</tbody></table>
+                        </div>
+                    </Card>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800 leading-relaxed">
+                    <i className="fas fa-shield-halved mr-2"></i>
+                    Audit v54 menyimpan metadata operasional, bukan isi lengkap nilai atau data pribadi. Hanya Kepala Sekolah dan Wakil Kurikulum yang dapat membaca dashboard monitoring.
+                </div>
+            </div>;
+        };
 
         const ProductionGoLiveView = () => {
             const { rawData, user, activePeriod, cloudStatus, refreshCloudData } = useContext(AppContext);
@@ -9574,12 +9908,12 @@ service firebase.storage {
             'Kepala Sekolah': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54'
             ],
             'Wakil Kurikulum': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54'
             ],
             'Guru': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','rekapabsensi','rekapqr','kartuid','checkio','izin','nilai','remedial','tka','kelas','murid',
@@ -9672,6 +10006,7 @@ service firebase.storage {
                 { id: 'firebase', label: 'Firebase Production', icon: 'fa-fire' },
                 { id: 'firebase51', label: 'Migrasi Data & Akun', icon: 'fa-cloud-arrow-up' },
                 { id: 'golive52', label: 'Uji Produksi & Go-Live', icon: 'fa-rocket' },
+                { id: 'monitoring54', label: 'Audit & Monitoring Produksi', icon: 'fa-chart-line' },
                 { id: 'bebanmengajar', label: 'Beban Mengajar', icon: 'fa-chart-gantt' },
                 { id: 'supervisi', label: 'Supervisi Akademik', icon: 'fa-clipboard-check' },
                 { id: 'rapor', label: 'Rapor Pendidikan & PBD', icon: 'fa-chart-pie' },
@@ -9989,6 +10324,11 @@ service firebase.storage {
                                     syncCollectionToFirestore(key,before,after,user.name).catch(err=>{
                                         console.error('Cloud sync failed',key,err);
                                         setCloudStatus({state:'error',message:`Sinkronisasi ${key} gagal: ${err.code||err.message||err}`});
+                                        writeSystemEvent({
+                                            type:'CLOUD_SYNC_FAILED',
+                                            message:err.message||String(err),
+                                            context:`collection=${key}`
+                                        });
                                     });
                                 }
                             });
@@ -10033,6 +10373,15 @@ service firebase.storage {
                         setUser(session);
                         setView('dashboard');
                         setAuthLoading(false);
+                        await updateAccountActivity(fbUser,profileData);
+                        await writeAuditLog({
+                            action:'LOGIN',
+                            module:'Authentication',
+                            collection:'users',
+                            documentId:fbUser.uid,
+                            detail:`Login produksi sebagai ${profileData.role||'-'}`,
+                            actor:fbUser
+                        });
                         await refreshCloudData(session);
                     }catch(e){
                         setCloudStatus({state:'error',message:e.message||String(e)});
@@ -10060,6 +10409,39 @@ service firebase.storage {
                 });
                 if(changed&&!productionMode) setRawData(next);
             },[activePeriod?.id]);
+
+
+            useEffect(()=>{
+                if(!productionMode || !user?.uid) return;
+                markAccountSeen();
+                const timer=setInterval(()=>markAccountSeen(),5*60*1000);
+                return ()=>clearInterval(timer);
+            },[productionMode,user?.uid]);
+
+            useEffect(()=>{
+                if(!productionMode) return;
+                const onError=(event)=>{
+                    writeSystemEvent({
+                        type:'WINDOW_ERROR',
+                        message:event?.message||'Unknown window error',
+                        context:`${event?.filename||''}:${event?.lineno||''}`
+                    });
+                };
+                const onReject=(event)=>{
+                    const reason=event?.reason;
+                    writeSystemEvent({
+                        type:'UNHANDLED_REJECTION',
+                        message:reason?.message||String(reason||'Unhandled promise rejection'),
+                        context:'window.unhandledrejection'
+                    });
+                };
+                window.addEventListener('error',onError);
+                window.addEventListener('unhandledrejection',onReject);
+                return ()=>{
+                    window.removeEventListener('error',onError);
+                    window.removeEventListener('unhandledrejection',onReject);
+                };
+            },[productionMode,user?.uid]);
 
             useEffect(()=>{
                 try{
@@ -10090,13 +10472,22 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','52.2');
+                    localStorage.setItem('simak_schema_version','54');
                 }catch(e){}
             },[rawData]);
 
             const logout=async()=>{
                 if(productionMode&&authInstance){
-                    try{await authInstance.signOut();}catch(e){}
+                    try{
+                        await writeAuditLog({
+                            action:'LOGOUT',
+                            module:'Authentication',
+                            collection:'users',
+                            documentId:authInstance.currentUser?.uid||'',
+                            detail:'Logout dari SIMAK Production'
+                        });
+                        await authInstance.signOut();
+                    }catch(e){}
                 }
                 setUser(null);setView('dashboard');
             };
@@ -10154,6 +10545,7 @@ service firebase.storage {
                     case 'firebase': return <FirebaseFoundationView />;
                     case 'firebase51': return <FirebaseMigrationView />;
                     case 'golive52': return <ProductionGoLiveView />;
+                    case 'monitoring54': return <ProductionMonitoringView />;
                     case 'supervisi': return <SupervisiView />;
                     case 'rapor': return <RaporPendidikanView />;
                     default: return <PlaceholderView title="Modul SIMAK" icon="fa-tools" />;

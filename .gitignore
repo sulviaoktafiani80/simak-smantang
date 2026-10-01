@@ -1,11 +1,8 @@
-# Local/editor files
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-
-# Never commit service-account or private credentials
+serviceAccountKey.json
 *service-account*.json
-*private-key*
+node_modules/
+output/
 .env
 .env.*
+temporary-credentials.csv
+provisioning-results.csv
