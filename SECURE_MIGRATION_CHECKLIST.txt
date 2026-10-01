@@ -1,0 +1,17 @@
+SIMAK SMANTANG v52.1 — SECURE MIGRATION CHECKLIST
+
+[ ] Firebase Web Config tersimpan
+[ ] Email/Password Authentication aktif
+[ ] Firestore database aktif
+[ ] Firestore Rules sudah dipublish
+[ ] users/{uid} Kepala Sekolah tersedia
+[ ] users/{uid} Wakil Kurikulum tersedia
+[ ] localId Kepala Sekolah = u1
+[ ] localId Wakil Kurikulum = u4
+[ ] Login Firebase Admin berhasil
+[ ] Status Firebase Admin Authenticated muncul
+[ ] Backup pra-migrasi sudah dibuat
+[ ] Migrasi Firestore dijalankan
+[ ] Verifikasi Firestore selesai
+[ ] Tidak ada permission-denied
+[ ] Bootstrap logout setelah migrasi

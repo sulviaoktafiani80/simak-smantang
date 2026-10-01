@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v52 - Uji Produksi & Go-Live</title>
+    <title>SIMAK SMANTANG v52.1 - Firebase Bootstrap Login & Secure Migration</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -91,7 +91,7 @@
     </style>
 </head>
 <body>
-    <!-- SIMAK SMANTANG v52 - Production Test & Go-Live -->
+    <!-- SIMAK SMANTANG v52.1 - Bootstrap Login & Secure Migration -->
     <div id="root"></div>
 
     
@@ -1729,7 +1729,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v52 • Uji Produksi & Go-Live • Firebase Auth • Firestore Primary</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v52.1 • Firebase Bootstrap Login • Secure Migration • Go-Live</span>
                         </div>
                     </div>
                 </div>
@@ -8254,6 +8254,33 @@ service firebase.storage {
             </div>;
         };
 
+
+        const getBootstrapSession = () => {
+            try {
+                return JSON.parse(localStorage.getItem('simak_bootstrap_session') || 'null');
+            } catch(e) {
+                return null;
+            }
+        };
+
+        const setBootstrapSession = (session) => {
+            if(session) localStorage.setItem('simak_bootstrap_session', JSON.stringify(session));
+            else localStorage.removeItem('simak_bootstrap_session');
+        };
+
+        const resolveBootstrapProfile = async (fbUser) => {
+            if(!firestoreInstance) throw new Error('Firestore belum terhubung.');
+            const snap=await firestoreInstance.collection('users').doc(fbUser.uid).get();
+            if(!snap.exists) throw new Error('Profil users/{uid} tidak ditemukan di Firestore.');
+            const data=snap.data();
+            if(data.active===false) throw new Error('Akun Firebase ini dinonaktifkan.');
+            const role=String(data.role||'');
+            if(!['Kepala Sekolah','Wakil Kurikulum'].includes(role)){
+                throw new Error('Bootstrap migration hanya dapat digunakan Kepala Sekolah atau Wakil Kurikulum.');
+            }
+            return {uid:fbUser.uid,email:fbUser.email||data.email||'',name:data.name||fbUser.email||'',role,localId:data.localId||''};
+        };
+
         const FirebaseMigrationView = () => {
             const { rawData, data, user, activePeriod } = useContext(AppContext);
             const source=rawData||data;
@@ -8266,6 +8293,11 @@ service firebase.storage {
             const [uidRows,setUidRows]=useState([]);
             const [uidImportMessage,setUidImportMessage]=useState('');
             const uidFileRef=useRef(null);
+            const [bootstrapSession,setBootstrapSessionState]=useState(()=>getBootstrapSession());
+            const [bootstrapEmail,setBootstrapEmail]=useState(bootstrapSession?.email||'sulviaoktafiani80@guru.sma.belajar.id');
+            const [bootstrapPassword,setBootstrapPassword]=useState('');
+            const [bootstrapBusy,setBootstrapBusy]=useState(false);
+            const [bootstrapMessage,setBootstrapMessage]=useState('');
 
             const accountRows=useMemo(()=>buildFirebaseAccountProvisioningRows(source),[source.users,source.students]);
             const collectionRows=V51_MIGRATION_COLLECTION_KEYS.map(key=>({
@@ -8278,6 +8310,55 @@ service firebase.storage {
             const log=(msg,type='info')=>setMigrationLog(prev=>[...prev,{time:new Date().toLocaleTimeString('id-ID'),msg,type}]);
 
             const refreshRuntime=()=>setRuntime(getFirebaseRuntimeStatus());
+
+            const bootstrapLogin=async()=>{
+                setBootstrapBusy(true);
+                setBootstrapMessage('');
+                try{
+                    if(!isFirebaseConfigReady(getSavedFirebaseConfig())) throw new Error('Firebase Web Config belum lengkap.');
+                    if(!authInstance||!firestoreInstance){
+                        const ok=initFirebase(getSavedFirebaseConfig());
+                        if(!ok) throw new Error(firebaseInitError||'Firebase gagal diinisialisasi.');
+                    }
+                    const cred=await authInstance.signInWithEmailAndPassword(bootstrapEmail.trim().toLowerCase(),bootstrapPassword);
+                    const profile=await resolveBootstrapProfile(cred.user);
+                    setBootstrapSession(profile);
+                    setBootstrapSessionState(profile);
+                    setBootstrapMessage(`Firebase admin terautentikasi sebagai ${profile.role}: ${profile.name}.`);
+                    setBootstrapPassword('');
+                    log(`Bootstrap Firebase login berhasil: ${profile.name} (${profile.role}).`,'ok');
+                    refreshRuntime();
+                }catch(e){
+                    try{ if(authInstance?.currentUser) await authInstance.signOut(); }catch(_){}
+                    setBootstrapSession(null);
+                    setBootstrapSessionState(null);
+                    const code=e?.code||'';
+                    const friendly=
+                        code==='auth/invalid-credential'?'Email atau password Firebase tidak valid.':
+                        code==='auth/user-disabled'?'Akun Firebase dinonaktifkan.':
+                        (e?.message||String(e));
+                    setBootstrapMessage(friendly);
+                    log(`Bootstrap login gagal: ${friendly}`,'error');
+                }finally{
+                    setBootstrapBusy(false);
+                }
+            };
+
+            const bootstrapLogout=async()=>{
+                try{ if(authInstance) await authInstance.signOut(); }catch(_){}
+                setBootstrapSession(null);
+                setBootstrapSessionState(null);
+                setBootstrapMessage('Sesi bootstrap Firebase telah diakhiri.');
+                log('Bootstrap Firebase logout.','info');
+            };
+
+            const requireBootstrapAuth=()=>{
+                if(!bootstrapSession || !authInstance?.currentUser){
+                    alert('Login Firebase Admin terlebih dahulu pada Tahap 0 — Bootstrap Authentication.');
+                    return false;
+                }
+                return true;
+            };
 
             const downloadLocalBackup=()=>{
                 const payload={
@@ -8341,6 +8422,7 @@ service firebase.storage {
             };
 
             const writeUsersProfiles=async()=>{
+                if(!requireBootstrapAuth()) return;
                 if(!firestoreInstance) return alert('Firestore belum terhubung.');
                 if(!uidRows.length) return alert('Impor CSV pemetaan UID terlebih dahulu.');
                 if(!confirm(`Tulis ${uidRows.length} profil users/{uid} ke Firestore?`)) return;
@@ -8432,6 +8514,7 @@ service firebase.storage {
             };
 
             const runMigration=async()=>{
+                if(!requireBootstrapAuth()) return;
                 refreshRuntime();
                 if(!firestoreInstance) return alert('Firestore belum terhubung. Buka Firebase Production dan lakukan inisialisasi terlebih dahulu.');
                 if(!backupConfirmed) return alert('Buat backup pra-migrasi terlebih dahulu.');
@@ -8465,6 +8548,7 @@ service firebase.storage {
             };
 
             const verifyMigration=async()=>{
+                if(!requireBootstrapAuth()) return;
                 if(!firestoreInstance) return alert('Firestore belum terhubung.');
                 setRunning(true);
                 try{
@@ -8500,7 +8584,7 @@ service firebase.storage {
                         </div>
                         <div className="bg-white/10 border border-white/20 rounded-2xl p-4 min-w-[260px]">
                             <p className="text-[10px] text-white/60 uppercase tracking-wider">Runtime</p>
-                            <p className="font-bold mt-1">{runtime.firestoreReady?'Firestore SDK Siap':'Firestore Belum Siap'}</p>
+                            <p className="font-bold mt-1">{bootstrapSession?'Firebase Admin Authenticated':(runtime.firestoreReady?'Firestore SDK Siap • Belum Login':'Firestore Belum Siap')}</p>
                             <p className="text-xs text-white/80 mt-1">{activePeriod?`${activePeriod.academicYear} • ${activePeriod.semester}`:'Tidak ada periode aktif'}</p>
                         </div>
                     </div>
@@ -8512,6 +8596,46 @@ service firebase.storage {
                     <StatCard title="Murid Beremail" value={studentEmailReady} icon="fa-user-graduate" colorClass="bg-brand-green" subtitle={`dari ${(source.students||[]).length} murid`} />
                     <StatCard title="UID Terpetakan" value={uidRows.length} icon="fa-link" colorClass="bg-amber-500" subtitle="Siap tulis profil users" />
                 </div>
+
+
+                <Card title="Tahap 0 — Bootstrap Authentication Firebase">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-end">
+                        <div className="lg:col-span-2">
+                            <label className="text-xs font-semibold text-gray-500">Email Admin Firebase</label>
+                            <input type="email" value={bootstrapEmail} onChange={e=>setBootstrapEmail(e.target.value)} disabled={!!bootstrapSession} className="w-full border rounded-lg p-2.5 mt-1 text-sm disabled:bg-gray-50"/>
+                        </div>
+                        <div>
+                            <label className="text-xs font-semibold text-gray-500">Password Firebase</label>
+                            <input type="password" value={bootstrapPassword} onChange={e=>setBootstrapPassword(e.target.value)} disabled={!!bootstrapSession} className="w-full border rounded-lg p-2.5 mt-1 text-sm disabled:bg-gray-50" placeholder="Password Firebase Auth"/>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {!bootstrapSession
+                            ? <button disabled={bootstrapBusy} onClick={bootstrapLogin} className="px-4 py-2.5 bg-brand-navy text-white rounded-lg text-sm font-bold disabled:opacity-50"><i className="fas fa-user-shield mr-2"></i>{bootstrapBusy?'Memverifikasi...':'Login Firebase Admin'}</button>
+                            : <button onClick={bootstrapLogout} className="px-4 py-2.5 border border-red-200 text-red-600 rounded-lg text-sm font-bold"><i className="fas fa-right-from-bracket mr-2"></i>Logout Bootstrap</button>
+                        }
+                        <button onClick={refreshRuntime} className="px-4 py-2.5 border border-brand-sea text-brand-sea rounded-lg text-sm font-bold"><i className="fas fa-arrows-rotate mr-2"></i>Refresh Status SDK</button>
+                    </div>
+
+                    {bootstrapSession&&<div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-full bg-green-600 text-white flex items-center justify-center"><i className="fas fa-shield-check"></i></div>
+                            <div>
+                                <p className="font-bold text-green-800">Firebase Admin Authenticated</p>
+                                <p className="text-sm text-green-700 mt-1">{bootstrapSession.name} • {bootstrapSession.role}</p>
+                                <p className="text-[11px] text-green-600 mt-1">UID: {bootstrapSession.uid}</p>
+                            </div>
+                        </div>
+                    </div>}
+
+                    {bootstrapMessage&&<div className={`mt-3 rounded-lg p-3 text-xs border ${bootstrapSession?'bg-green-50 border-green-100 text-green-800':'bg-amber-50 border-amber-100 text-amber-800'}`}>{bootstrapMessage}</div>}
+
+                    <div className="mt-4 bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-800">
+                        <i className="fas fa-lock mr-2"></i>
+                        Tahap ini hanya membuat sesi Firebase Authentication sementara untuk migrasi aman. Login utama SIMAK tetap mode Staging sampai Go-Live diaktifkan.
+                    </div>
+                </Card>
 
                 <Card title="Tahap 1 — Backup Pra-Migrasi">
                     <div className="flex flex-col md:flex-row justify-between gap-4 items-start md:items-center">
@@ -8533,8 +8657,8 @@ service firebase.storage {
                     <div className="flex flex-wrap gap-2 mt-4">
                         <button onClick={()=>setSelected(Object.fromEntries(V51_MIGRATION_COLLECTION_KEYS.map(k=>[k,true])))} className="px-3 py-2 border rounded-lg text-xs font-bold">Pilih Semua</button>
                         <button onClick={()=>setSelected(Object.fromEntries(V51_MIGRATION_COLLECTION_KEYS.map(k=>[k,false])))} className="px-3 py-2 border rounded-lg text-xs font-bold">Kosongkan</button>
-                        <button disabled={running} onClick={runMigration} className="px-4 py-2 bg-brand-navy text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-cloud-arrow-up mr-2"></i>{running?'Memproses...':'Mulai Migrasi Data'}</button>
-                        <button disabled={running} onClick={verifyMigration} className="px-4 py-2 bg-brand-sea text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-check-double mr-2"></i>Verifikasi Firestore</button>
+                        <button disabled={running||!bootstrapSession} onClick={runMigration} className="px-4 py-2 bg-brand-navy text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-cloud-arrow-up mr-2"></i>{running?'Memproses...':'Mulai Migrasi Data'}</button>
+                        <button disabled={running||!bootstrapSession} onClick={verifyMigration} className="px-4 py-2 bg-brand-sea text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-check-double mr-2"></i>Verifikasi Firestore</button>
                     </div>
                 </Card>
 
@@ -8557,7 +8681,7 @@ service firebase.storage {
                         <p className="text-sm text-gray-600">Setelah akun dibuat di Firebase Authentication, isi kolom <b>authUid</b> pada template UID, lalu impor kembali CSV untuk membuat profil role di Firestore.</p>
                         <input ref={uidFileRef} type="file" accept=".csv,text/csv" onChange={e=>importUidMap(e.target.files?.[0])} className="w-full border rounded-lg p-2.5 mt-4 text-sm"/>
                         {uidImportMessage&&<div className="mt-3 bg-blue-50 text-blue-800 border border-blue-100 rounded-lg p-3 text-xs">{uidImportMessage}</div>}
-                        <button disabled={running||!uidRows.length} onClick={writeUsersProfiles} className="w-full mt-4 py-2.5 bg-brand-navy text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-users-gear mr-2"></i>Tulis Profil users/&#123;uid&#125;</button>
+                        <button disabled={running||!uidRows.length||!bootstrapSession} onClick={writeUsersProfiles} className="w-full mt-4 py-2.5 bg-brand-navy text-white rounded-lg text-xs font-bold disabled:opacity-50"><i className="fas fa-users-gear mr-2"></i>Tulis Profil users/&#123;uid&#125;</button>
                     </Card>
                 </div>
 
