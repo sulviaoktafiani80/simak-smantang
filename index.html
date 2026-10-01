@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v59 - Production Stabilization & Security Closure</title>
+    <title>SIMAK SMANTANG v59.1 - White Screen Bootstrap Fix</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -102,6 +102,14 @@
 </head>
 <body>
     <!-- SIMAK SMANTANG v52.2 - Go-Live Bootstrap Fix -->
+    <div id="boot-fallback" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;font-family:Arial,sans-serif;color:#0f2f75;">
+        <div style="text-align:center;padding:24px;">
+            <div style="width:42px;height:42px;border:4px solid #dbeafe;border-top-color:#0f766e;border-radius:50%;margin:0 auto 14px;animation:simakspin 1s linear infinite;"></div>
+            <div style="font-weight:700;font-size:16px;">Menyiapkan SIMAK SMANTANG...</div>
+            <div style="font-size:12px;color:#64748b;margin-top:6px;">v59.1 • Firebase Production</div>
+        </div>
+    </div>
+    <style>@keyframes simakspin{to{transform:rotate(360deg)}}</style>
     <div id="root"></div>
 
     
@@ -127,6 +135,30 @@
                 }
             },6000);
         })();
+    </script>
+
+    <script>
+        window.addEventListener('error', function(event){
+            setTimeout(function(){
+                if(window.__SIMAK_BOOT_OK__) return;
+                var el=document.getElementById('boot-fallback');
+                if(!el) return;
+                el.innerHTML='<div style="max-width:720px;padding:28px;text-align:left;background:white;border:1px solid #fecaca;border-radius:16px;box-shadow:0 12px 30px rgba(15,23,42,.08)"><div style="font-weight:800;color:#991b1b;font-size:18px">SIMAK gagal memulai</div><div style="margin-top:8px;color:#475569;font-size:13px">Terjadi error JavaScript sebelum aplikasi selesai dimuat.</div><div style="margin-top:12px;padding:10px;background:#fef2f2;border-radius:8px;color:#b91c1c;font-size:12px;word-break:break-word">'+(event.message||'Unknown error')+'</div></div>';
+            },50);
+        });
+        setTimeout(function(){
+            if(window.__SIMAK_BOOT_OK__) return;
+            var el=document.getElementById('boot-fallback');
+            if(!el) return;
+            var msg=el.querySelector('[data-timeout-message]');
+            if(!msg){
+                var d=document.createElement('div');
+                d.setAttribute('data-timeout-message','1');
+                d.style.cssText='font-size:11px;color:#b45309;margin-top:12px;';
+                d.textContent='Jika proses ini lebih dari 15 detik, periksa koneksi internet/CDN lalu muat ulang.';
+                el.firstElementChild && el.firstElementChild.appendChild(d);
+            }
+        },15000);
     </script>
 
     <script type="text/babel">
@@ -1783,7 +1815,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v59 • Production Stabilization • Security Closure • Stable Realtime</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v59.1 • Bootstrap Fix • Stable Realtime • Production</span>
                         </div>
                     </div>
                 </div>
@@ -8023,7 +8055,7 @@ service firebase.storage {
 
 
         // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
-        const REALTIME_ENGINE_VERSION='59';
+        const REALTIME_ENGINE_VERSION='59.1';
         const realtimeLocalWriteRegistry = new Map();
 
         const registerRealtimeLocalWrite=(collectionName,docId)=>{
@@ -11213,7 +11245,7 @@ service firebase.storage {
                                             ? (studentNavItems.find(i=>i.id===view)?.label || 'Beranda')
                                             : (staffNavItems.find(i=>i.id===view)?.label || 'Dashboard'))}
                                 </span>
-                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v58</span>
+                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v59.1</span>
                             </div>
                             <span className="text-[10px] px-3 py-1.5 rounded-full bg-white border text-gray-500 shadow-sm">
                                 {user?.role}
@@ -11223,7 +11255,7 @@ service firebase.storage {
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
                                 <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v57.3</span>
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v59.1</span>
                                 <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
                             </div>
                             <div className="text-[10px] text-gray-400">
@@ -11257,6 +11289,130 @@ service firebase.storage {
             });
 
             const [firebaseReady,setFirebaseReady]=useState(!!(authInstance&&firestoreInstance));
+            const [firebaseBootError,setFirebaseBootError]=useState('');
+
+            useEffect(()=>{
+                if(!productionMode){
+                    setFirebaseReady(false);
+                    setFirebaseBootError('');
+                    setAuthLoading(false);
+                    return;
+                }
+
+                let alive=true;
+                setCloudStatus({state:'loading',message:'Menyiapkan Firebase Production...'});
+
+                ensureFirebaseReady({maxAttempts:30})
+                    .then(ok=>{
+                        if(!alive) return;
+                        if(ok && authInstance && firestoreInstance){
+                            setFirebaseReady(true);
+                            setFirebaseBootError('');
+                            setCloudStatus({state:'ready',message:'Firebase Production siap'});
+                        }else{
+                            const msg=firebaseInitError||'Firebase gagal diinisialisasi setelah beberapa percobaan.';
+                            setFirebaseReady(false);
+                            setFirebaseBootError(msg);
+                            setCloudStatus({state:'error',message:msg});
+                            setAuthLoading(false);
+                        }
+                    })
+                    .catch(err=>{
+                        if(!alive) return;
+                        const msg=err?.message||String(err);
+                        setFirebaseReady(false);
+                        setFirebaseBootError(msg);
+                        setCloudStatus({state:'error',message:msg});
+                        setAuthLoading(false);
+                    });
+
+                return ()=>{alive=false;};
+            },[productionMode]);
+
+            const [rawData,setRawData]=useState(()=>{
+                try{
+                    const saved=localStorage.getItem('simak_smantang_data_v2');
+                    const parsed=saved?JSON.parse(saved):{};
+                    return {
+                        ...initialData,
+                        ...parsed,
+                        users:parsed.users||initialData.users,
+                        students:parsed.students||initialData.students,
+                        schedules:parsed.schedules||initialData.schedules,
+                        academicPeriods:parsed.academicPeriods||initialData.academicPeriods
+                    };
+                }catch(e){return initialData;}
+            });
+
+            const activePeriod=useMemo(()=>getActivePeriod(rawData),[rawData.academicPeriods]);
+
+            const data=useMemo(()=>{
+                const next={...rawData};
+                PERIOD_SENSITIVE_KEYS.forEach(key=>{
+                    if(!Array.isArray(rawData[key])) return;
+                    next[key]=activePeriod?rawData[key].filter(r=>recordMatchesPeriod(r,activePeriod)):[];
+                });
+                return next;
+            },[rawData,activePeriod?.id]);
+
+            const refreshCloudData=async(profile=user)=>{
+                if(!productionMode||!profile||!firestoreInstance) return;
+                setCloudStatus({state:'loading',message:'Memuat data Firestore...'});
+                try{
+                    const cloud=await loadCloudDataForProfile(profile);
+                    setRawData(prev=>({...prev,...cloud}));
+                    const total=Object.values(cloud).filter(Array.isArray).reduce((s,a)=>s+a.length,0);
+                    setCloudStatus({state:'ready',message:`Firestore aktif • ${total} record dimuat`});
+                }catch(e){
+                    setCloudStatus({state:'error',message:`Firestore gagal: ${e.code||e.message||e}`});
+                }
+            };
+
+            const setData=(updater)=>{
+                setRawData(prev=>{
+                    const candidate=typeof updater==='function'?updater(prev):updater;
+                    if(!candidate||typeof candidate!=='object') return prev;
+
+                    const strictActive=getActivePeriod(prev);
+                    if(!strictActive){
+                        const touchedSensitive=PERIOD_SENSITIVE_KEYS.some(key=>{
+                            const before=Array.isArray(prev[key])?prev[key]:[];
+                            const after=Array.isArray(candidate[key])?candidate[key]:[];
+                            return JSON.stringify(before)!==JSON.stringify(after);
+                        });
+                        if(touchedSensitive){
+                            setTimeout(()=>alert('Transaksi diblokir: tidak ada semester berstatus Aktif.'),0);
+                            const safe={...candidate};
+                            PERIOD_SENSITIVE_KEYS.forEach(key=>{if(Array.isArray(prev[key])) safe[key]=prev[key];});
+                            return safe;
+                        }
+                    }
+
+                    if(productionMode && user?.authProvider==='firebase' && firestoreInstance){
+                        const role=normalizeAccessRole(user);
+                        const writable=['Kepala Sekolah','Wakil Kurikulum','Guru','Guru Piket','Tenaga Kependidikan'].includes(role);
+                        if(writable){
+                            Object.keys(CLOUD_DATA_KEY_MAP).forEach(key=>{
+                                const before=Array.isArray(prev[key])?prev[key]:[];
+                                const after=Array.isArray(candidate[key])?candidate[key]:[];
+                                if(JSON.stringify(before)!==JSON.stringify(after)){
+                                    syncCollectionToFirestore(key,before,after,user.name).catch(err=>{
+                                        console.error('Cloud sync failed',key,err);
+                                        setCloudStatus({state:'error',message:`Sinkronisasi ${key} gagal: ${err.code||err.message||err}`});
+                                        writeSystemEvent({
+                                            type:'CLOUD_SYNC_FAILED',
+                                            message:err.message||String(err),
+                                            context:`collection=${key}`
+                                        });
+                                    });
+                                }
+                            });
+                        }
+                    }
+                    return candidate;
+                });
+            };
+
 
             useEffect(()=>{
                 if(!productionMode){
@@ -11566,7 +11722,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','59');
+                    localStorage.setItem('simak_schema_version','59.1');
                 }catch(e){}
             },[rawData]);
 
@@ -11591,8 +11747,20 @@ service firebase.storage {
                 cloudStatus,refreshCloudData,realtimeStatus,productionMode,logout
             }),[user,view,data,rawData,activePeriod,cloudStatus,realtimeStatus,productionMode]);
 
+            if(productionMode && firebaseBootError && !firebaseReady){
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+                    <div className="max-w-xl w-full bg-white border border-red-200 rounded-2xl shadow-lg p-6">
+                        <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mb-4"><i className="fas fa-triangle-exclamation text-xl"></i></div>
+                        <h1 className="text-xl font-bold text-brand-navy">Firebase Production belum siap</h1>
+                        <p className="text-sm text-gray-600 mt-2">SIMAK tidak akan menampilkan layar putih. Periksa koneksi internet/CDN atau konfigurasi Firebase.</p>
+                        <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-3 text-xs text-red-700 break-all">{firebaseBootError}</div>
+                        <button onClick={()=>location.reload()} className="mt-4 px-5 py-2.5 bg-brand-navy text-white rounded-lg text-sm font-bold"><i className="fas fa-rotate mr-2"></i>Coba Muat Ulang</button>
+                    </div>
+                </div>;
+            }
+
             if(authLoading){
-                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v59</p></div></div>;
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v59.1</p></div></div>;
             }
 
             if(!user){
@@ -11655,6 +11823,8 @@ service firebase.storage {
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
         window.__SIMAK_BOOT_OK__ = true;
+        const bootFallback=document.getElementById('boot-fallback');
+        if(bootFallback) bootFallback.style.display='none';
     </script>
 </body>
 </html>
