@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v54 - Audit Log & Production Monitoring</title>
+    <title>SIMAK SMANTANG v55 - QR Security Hardening & Secure Check-In/Check-Out</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1732,7 +1732,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v54 • Audit Log • Production Monitoring • Firebase Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v55 • Secure QR Token • Hardened Check-In/Out • Firebase Production</span>
                         </div>
                     </div>
                 </div>
@@ -2206,6 +2206,7 @@ service firebase.storage {
                             ['fa-cloud-arrow-up','Migrasi v51','firebase51'],
                             ['fa-rocket','Go-Live v52','golive52'],
                             ['fa-chart-line','Monitoring v54','monitoring54'],
+                            ['fa-shield-halved','QR Security v55','qrsecurity55'],
                         ].map(([icon,label,view])=><button key={view} onClick={()=>setView(view)} className="p-3 border rounded-xl text-xs font-semibold hover:bg-blue-50 hover:border-brand-sea"><i className={`fas ${icon} block text-lg text-brand-sea mb-2`}></i>{label}</button>)}
                     </div>
                 </Card>
@@ -4826,6 +4827,7 @@ service firebase.storage {
             const [message,setMessage]=useState(null);
             const [manualCode,setManualCode]=useState('');
             const [lastPerson,setLastPerson]=useState(null);
+            const [scanBusy,setScanBusy]=useState(false);
 
             const classes=['Semua',...Object.keys(classMeta)];
 
@@ -4846,17 +4848,15 @@ service firebase.storage {
 
             const people=getPeople();
 
-            const parsePayload=(text)=> mode==='murid'?parseStudentQRPayload(text):parseStaffQRPayload(text);
-
-            const findPerson=(parsed)=>{
-                if(!parsed) return null;
-                if(mode==='murid'){
-                    return (data.students||[]).find(s=>s.id===parsed.studentId && String(s.nisn||'')===String(parsed.nisn||''));
+            const findPersonBySecureToken=(resolved)=>{
+                if(!resolved) return null;
+                if(resolved.personType==='murid'){
+                    return (data.students||[]).find(s=>s.id===resolved.personId);
                 }
-                return (data.users||[]).find(e=>{
-                    const identity=String(e.nip||e.email||'');
-                    return e.id===parsed.employeeId && identity===String(parsed.identity||'');
-                });
+                if(resolved.personType==='pegawai'){
+                    return (data.users||[]).find(e=>e.id===resolved.personId);
+                }
+                return null;
             };
 
             const personId=(p)=>p.id;
@@ -4885,96 +4885,112 @@ service firebase.storage {
                 return h*60+m;
             };
 
-            const processCode=(decodedText)=>{
-                const parsed=parsePayload(decodedText);
-                if(!parsed){
-                    setMessage({type:'error',text:'QR tidak dikenali untuk jenis akun yang dipilih.'});
-                    beep(false); return;
-                }
-                const person=findPerson(parsed);
-                if(!person){
-                    setMessage({type:'error',text:'Identitas QR tidak cocok dengan data aktif.'});
-                    beep(false); return;
-                }
-
-                const existing=getRecordFor(person);
-                const now=new Date();
-                const time=now.toTimeString().slice(0,5);
-
-                if(action==='checkin'){
-                    if(existing?.checkInTime){
-                        setLastPerson(person);
-                        setMessage({type:'warning',text:`${personName(person)} sudah check-in pukul ${existing.checkInTime}.`});
-                        beep(false); return;
+            const processCode=async(decodedText)=>{
+                if(scanBusy) return;
+                setScanBusy(true);
+                try{
+                    const resolved=await resolveSecureQRPayload(decodedText);
+                    const expectedType=mode==='murid'?'murid':'pegawai';
+                    if(resolved.personType!==expectedType){
+                        throw new Error(`QR ini terdaftar sebagai ${resolved.personType}, bukan ${expectedType}.`);
                     }
+                    const person=findPersonBySecureToken(resolved);
+                    if(!person) throw new Error('Pemilik token tidak ditemukan pada data aktif.');
 
-                    const status=time>lateCutoff?'Terlambat':'Hadir';
-                    const base=existing||{};
-                    const rec={
-                        ...base,
-                        id:existing?.id || `${mode==='murid'?'att':'sa'}_${date}_${personId(person)}`,
-                        date,
-                        ...(mode==='murid'
-                            ? {className:person.class,studentId:person.id,studentName:person.name,guruWali:person.guruWali,waliKelas:person.waliKelas}
-                            : {employeeId:person.id,employeeName:person.name}),
-                        status,
-                        note:[base.note,`Check-in QR ${time}`].filter(Boolean).join(' | '),
-                        checkInTime:time,
-                        checkInSource:'QR',
-                        source:'QR',
-                        qrVerified:true,
-                        recordedBy:user.name,
-                        periodId:activePeriod?.id,
-                        academicYear:activePeriod?.academicYear,
-                        semester:activePeriod?.semester,
-                        updatedAt:new Date().toISOString()
-                    };
+                    const now=new Date();
+                    const time=now.toTimeString().slice(0,5);
+                    const docId=`${mode==='murid'?'att':'sa'}_${date}_${personId(person)}`;
+                    const ref=firestoreInstance.collection(recordsKey).doc(docId);
+                    let savedRec=null;
+
+                    await firestoreInstance.runTransaction(async(tx)=>{
+                        const snap=await tx.get(ref);
+                        const cloud=snap.exists?snap.data():null;
+                        const existing=cloud||getRecordFor(person)||null;
+
+                        if(action==='checkin'){
+                            if(existing?.checkInTime) throw new Error(`${personName(person)} sudah check-in pukul ${existing.checkInTime}.`);
+                            const status=time>lateCutoff?'Terlambat':'Hadir';
+                            savedRec={
+                                ...(existing||{}),
+                                id:docId,
+                                date,
+                                ...(mode==='murid'
+                                    ? {className:person.class,studentId:person.id,studentName:person.name,guruWali:person.guruWali,waliKelas:person.waliKelas}
+                                    : {employeeId:person.id,employeeName:person.name}),
+                                status,
+                                note:[existing?.note,`Secure QR check-in ${time}`].filter(Boolean).join(' | '),
+                                checkInTime:time,
+                                checkInSource:'Secure QR v55',
+                                source:'Secure QR v55',
+                                qrVerified:true,
+                                qrTokenVersion:55,
+                                qrTokenHash:resolved.tokenHash,
+                                recordedBy:user.name,
+                                recordedByUid:authInstance?.currentUser?.uid||'',
+                                periodId:activePeriod?.id,
+                                academicYear:activePeriod?.academicYear,
+                                semester:activePeriod?.semester,
+                                updatedAt:new Date().toISOString()
+                            };
+                        }else{
+                            if(!existing?.checkInTime) throw new Error(`${personName(person)} belum check-in.`);
+                            if(existing?.checkOutTime) throw new Error(`${personName(person)} sudah check-out pukul ${existing.checkOutTime}.`);
+                            const early=time<checkoutStart;
+                            const durationMin=Math.max(0,minutes(time)-minutes(existing.checkInTime));
+                            const h=Math.floor(durationMin/60),m=durationMin%60;
+                            savedRec={
+                                ...existing,
+                                id:docId,
+                                checkOutTime:time,
+                                checkOutSource:'Secure QR v55',
+                                earlyLeave:early,
+                                durationMinutes:durationMin,
+                                durationLabel:`${h} jam ${m} menit`,
+                                note:[existing.note,`Secure QR check-out ${time}${early?' (Pulang Lebih Awal)':''}`].filter(Boolean).join(' | '),
+                                qrTokenVersion:55,
+                                qrTokenHash:resolved.tokenHash,
+                                updatedAt:new Date().toISOString()
+                            };
+                        }
+                        tx.set(ref,savedRec,{merge:true});
+                    });
 
                     setData(prev=>{
                         const arr=prev[recordsKey]||[];
-                        const without=arr.filter(r=>!(r.date===date && (mode==='murid'?r.studentId===person.id:r.employeeId===person.id)));
-                        return {...prev,[recordsKey]:[...without,rec]};
+                        const without=arr.filter(r=>r.id!==docId && !(r.date===date&&(mode==='murid'?r.studentId===person.id:r.employeeId===person.id)));
+                        return {...prev,[recordsKey]:[...without,savedRec]};
+                    });
+
+                    await touchSecureQRToken(resolved.tokenHash);
+                    await writeAuditLog({
+                        action:action==='checkin'?'QR_CHECKIN':'QR_CHECKOUT',
+                        module:'Secure Check-In/Out',
+                        collection:recordsKey,
+                        documentId:docId,
+                        detail:`${personName(person)} • ${time} • token …${resolved.tokenSuffix||''}`
                     });
 
                     setLastPerson(person);
                     setManualCode('');
-                    setMessage({type:'success',text:`${personName(person)} berhasil check-in pukul ${time} sebagai ${status}.`});
+                    const label=action==='checkin'
+                        ? `${personName(person)} berhasil check-in pukul ${time} sebagai ${savedRec.status}.`
+                        : `${personName(person)} berhasil check-out pukul ${time}. ${savedRec.durationLabel||''}${savedRec.earlyLeave?' • Pulang lebih awal':''}`;
+                    setMessage({type:savedRec.earlyLeave?'warning':'success',text:label});
                     beep(true);
-                } else {
-                    if(!existing?.checkInTime){
-                        setLastPerson(person);
-                        setMessage({type:'error',text:`${personName(person)} belum check-in. Check-out tidak dapat dilakukan.`});
-                        beep(false); return;
-                    }
-                    if(existing?.checkOutTime){
-                        setLastPerson(person);
-                        setMessage({type:'warning',text:`${personName(person)} sudah check-out pukul ${existing.checkOutTime}.`});
-                        beep(false); return;
-                    }
-
-                    const early=time<checkoutStart;
-                    const durationMin=Math.max(0,minutes(time)-minutes(existing.checkInTime));
-                    const h=Math.floor(durationMin/60), m=durationMin%60;
-                    const rec={
-                        ...existing,
-                        checkOutTime:time,
-                        checkOutSource:'QR',
-                        earlyLeave:early,
-                        durationMinutes:durationMin,
-                        durationLabel:`${h} jam ${m} menit`,
-                        note:[existing.note,`Check-out QR ${time}${early?' (Pulang Lebih Awal)':''}`].filter(Boolean).join(' | '),
-                        updatedAt:new Date().toISOString()
-                    };
-
-                    setData(prev=>{
-                        const arr=prev[recordsKey]||[];
-                        return {...prev,[recordsKey]:arr.map(r=>r.id===existing.id?rec:r)};
+                }catch(err){
+                    setMessage({type:'error',text:err.message||String(err)});
+                    await writeAuditLog({
+                        action:'QR_SCAN_REJECTED',
+                        module:'Secure Check-In/Out',
+                        collection:recordsKey,
+                        documentId:'-',
+                        detail:err.message||String(err),
+                        severity:'warning'
                     });
-
-                    setLastPerson(person);
-                    setManualCode('');
-                    setMessage({type:early?'warning':'success',text:`${personName(person)} berhasil check-out pukul ${time}. Durasi ${h} jam ${m} menit${early?' • Pulang lebih awal':''}.`});
-                    beep(true);
+                    beep(false);
+                }finally{
+                    setScanBusy(false);
                 }
             };
 
@@ -4988,7 +5004,7 @@ service firebase.storage {
                     await instance.start(
                         {facingMode:'environment'},
                         {fps:10,qrbox:{width:240,height:240}},
-                        (text)=>processCode(text),
+                        (text)=>{processCode(text);},
                         ()=>{}
                     );
                     setCameraActive(true);
@@ -5025,8 +5041,8 @@ service firebase.storage {
 
             return <div className="space-y-6 animate-fade-in">
                 <div className="bg-gradient-to-r from-brand-navy to-brand-sea rounded-2xl p-6 text-white shadow-md">
-                    <p className="text-xs uppercase tracking-widest text-brand-gold font-bold">QR ATTENDANCE FLOW</p>
-                    <h2 className="text-2xl font-bold mt-1">Check-in & Check-out QR Murid dan Pegawai</h2>
+                    <p className="text-xs uppercase tracking-widest text-brand-gold font-bold">SECURE QR ATTENDANCE • v55</p>
+                    <h2 className="text-2xl font-bold mt-1">Secure Check-in & Check-out QR Murid dan Pegawai</h2>
                     <p className="text-sm text-white/75 mt-1">Jam Masuk • Jam Pulang • Terlambat • Pulang Lebih Awal • Durasi Kehadiran</p>
                 </div>
 
@@ -5084,14 +5100,14 @@ service firebase.storage {
                                 ? <button onClick={startCamera} className="px-4 py-2 bg-brand-navy text-white rounded-lg text-sm font-bold"><i className="fas fa-camera mr-2"></i>Aktifkan Kamera</button>
                                 : <button onClick={stopCamera} className="px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold"><i className="fas fa-stop mr-2"></i>Matikan Kamera</button>}
                         </div>
-                        <p className="text-[11px] text-gray-400 mt-3">Gunakan kartu QR yang sama dengan v41. Sistem otomatis menentukan aksi berdasarkan mode Check-in atau Check-out.</p>
+                        <p className="text-[11px] text-gray-400 mt-3">Hanya Secure QR v55 yang diterima. Kartu QR v41/v42 lama otomatis ditolak dan harus dicetak ulang.</p>
                     </Card>
 
                     <div className="space-y-4">
                         <Card title="Input Kode Manual">
                             <div className="flex gap-2">
-                                <input value={manualCode} onChange={e=>setManualCode(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')processCode(manualCode)}} placeholder={mode==='murid'?'SMANTANG|ID|NISN':'SMANTANG-PEGAWAI|ID|NIP'} className="flex-1 border rounded-lg p-2.5 text-sm"/>
-                                <button onClick={()=>processCode(manualCode)} className="px-4 py-2 bg-brand-sea text-white rounded-lg text-sm font-bold">Proses</button>
+                                <input value={manualCode} onChange={e=>setManualCode(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')processCode(manualCode)}} placeholder="SM55.&lt;secure-token&gt;" className="flex-1 border rounded-lg p-2.5 text-sm"/>
+                                <button disabled={scanBusy} onClick={()=>processCode(manualCode)} className="px-4 py-2 bg-brand-sea text-white rounded-lg text-sm font-bold disabled:opacity-50">{scanBusy?'Memvalidasi...':'Proses'}</button>
                             </div>
                         </Card>
 
@@ -5149,7 +5165,7 @@ service firebase.storage {
 
                 <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800">
                     <i className="fas fa-circle-info mr-2"></i>
-                    Check-out hanya dapat dilakukan setelah check-in. Scan ganda ditolak. Durasi dihitung dari jam masuk ke jam pulang, dan status “Pulang Lebih Awal” diberikan jika check-out dilakukan sebelum batas jam pulang yang ditentukan.
+                    Secure QR v55 divalidasi terhadap hash token di Firestore. Token yang dicabut, kedaluwarsa, tidak dikenal, atau QR legacy akan ditolak. Check-in/check-out ditulis melalui transaksi Firestore untuk mengurangi risiko scan ganda.
                 </div>
             </div>;
         };
@@ -5168,13 +5184,13 @@ service firebase.storage {
                 ? (data.students||[]).filter(s=>(selectedClass==='Semua'||s.class===selectedClass) && `${s.name} ${s.nisn||''} ${s.class}`.toLowerCase().includes(search.toLowerCase()))
                 : (data.users||[]).filter(e=>`${e.name} ${e.nip||''} ${e.email||''} ${e.jabatan||''}`.toLowerCase().includes(search.toLowerCase()));
 
-            const getPayload=(p)=>mode==='murid'?buildStudentQRPayload(p):buildStaffQRPayload(p);
+            const getPayload=()=>'';
             const getIdentity=(p)=>mode==='murid'?(p.nisn||'-'):(p.nip||p.email||'-');
             const getSub=(p)=>mode==='murid'?`Kelas ${p.class}`:(p.jabatan||p.role||'Pegawai');
 
             const printOne=(p)=>{
                 const payload=getPayload(p);
-                if(!payload) return alert('Identitas belum lengkap untuk membuat QR.');
+                if(!payload) return alert('Generator QR legacy dinonaktifkan pada v55. Gunakan menu Manajemen Token QR v55 untuk menerbitkan kartu Secure QR.');
                 const holder=document.createElement('div');
                 new QRCode(holder,{text:payload,width:210,height:210,correctLevel:QRCode.CorrectLevel.M});
                 setTimeout(()=>{
@@ -5228,7 +5244,7 @@ service firebase.storage {
 
             const printAll=()=>{
                 const list=people.filter(p=>getPayload(p));
-                if(!list.length) return alert('Tidak ada data yang dapat dicetak pada filter ini.');
+                if(!list.length) return alert('QR legacy sudah dinonaktifkan. Gunakan menu Manajemen Token QR v55 untuk mencetak Secure QR.');
                 const landscape=orientation==='landscape';
                 const w=window.open('','_blank','width=1200,height=900');
                 const dataList=list.map(p=>({
@@ -5280,8 +5296,8 @@ service firebase.storage {
             return <div className="space-y-6 animate-fade-in">
                 <div className="bg-gradient-to-r from-brand-navy to-brand-sea rounded-2xl p-6 text-white shadow-md">
                     <p className="text-xs uppercase tracking-widest text-brand-gold font-bold">IDENTITAS DIGITAL SEKOLAH</p>
-                    <h2 className="text-2xl font-bold mt-1">Kartu Identitas QR Murid & Pegawai</h2>
-                    <p className="text-sm text-white/75 mt-1">Logo Sekolah • Identitas • QR Kehadiran • Siap Cetak</p>
+                    <h2 className="text-2xl font-bold mt-1">Kartu Identitas QR Legacy — Dinonaktifkan</h2>
+                    <p className="text-sm text-white/75 mt-1">Keamanan v55 mewajibkan token Secure QR baru. Gunakan menu Manajemen Token QR v55.</p>
                 </div>
 
                 <Card>
@@ -5763,7 +5779,7 @@ service firebase.storage {
                 tka:'TKA & Bank Soal', kelas:'Data Kelas', murid:'Data Murid', guruwali:'Dashboard Guru Wali', earlywarning:'Early Warning Murid', kegiatan:'Kegiatan',
                 perangkat:'Perangkat Ajar', periode:'Tahun Ajaran/Semester', bebanmengajar:'Beban Mengajar',
                 supervisi:'Supervisi Akademik', rapor:'Rapor Pendidikan/PBD', arsip:'Arsip Kurikulum', pegawai:'Data Pegawai',
-                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi'
+                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', qrsecurity55:'Manajemen Token QR v55'
             };
 
             const sensitiveViews = ['nilai','perangkat','periode','supervisi','rapor','pegawai','backup','auditakses'];
@@ -6572,16 +6588,181 @@ service firebase.storage {
         };
 
 
-        const buildStudentQRPayload = (student) => {
-            if (!student?.nisn) return '';
-            return `SMANTANG|${student.id}|${student.nisn}`;
+
+        // === v55 SECURE QR FOUNDATION ===
+        const SECURE_QR_PREFIX='SM55.';
+        const SECURE_QR_TOKEN_DAYS_DEFAULT=365;
+
+        const bytesToBase64Url=(bytes)=>{
+            let binary='';
+            bytes.forEach(b=>binary+=String.fromCharCode(b));
+            return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
         };
 
-        const parseStudentQRPayload = (text) => {
-            const parts=String(text||'').trim().split('|');
-            if(parts.length!==3 || parts[0]!=='SMANTANG') return null;
-            return {studentId:parts[1],nisn:parts[2]};
+        const randomSecureToken=()=>{
+            const bytes=new Uint8Array(32);
+            crypto.getRandomValues(bytes);
+            return bytesToBase64Url(bytes);
         };
+
+        const sha256Hex=async(text)=>{
+            const data=new TextEncoder().encode(String(text||''));
+            const digest=await crypto.subtle.digest('SHA-256',data);
+            return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+        };
+
+        const parseSecureQRText=(text)=>{
+            const raw=String(text||'').trim();
+            if(!raw.startsWith(SECURE_QR_PREFIX)) return null;
+            const token=raw.slice(SECURE_QR_PREFIX.length);
+            if(!/^[A-Za-z0-9_-]{40,80}$/.test(token)) return null;
+            return token;
+        };
+
+        const resolveSecureQRPayload=async(text)=>{
+            if(!firestoreInstance) throw new Error('Firestore belum terhubung.');
+            const token=parseSecureQRText(text);
+            if(!token) throw new Error('Format QR tidak valid atau merupakan QR legacy.');
+            const tokenHash=await sha256Hex(token);
+            const snap=await firestoreInstance.collection('qrTokens').doc(tokenHash).get();
+            if(!snap.exists) throw new Error('Token QR tidak dikenal.');
+            const data=snap.data()||{};
+            if(data.active!==true || data.revokedAt) throw new Error('Token QR sudah dicabut/nonaktif.');
+            const expires=tsToDate(data.expiresAt);
+            if(expires && expires.getTime()<Date.now()) throw new Error('Token QR sudah kedaluwarsa.');
+            return {...data,tokenHash};
+        };
+
+        const touchSecureQRToken=async(tokenHash)=>{
+            if(!firestoreInstance||!tokenHash) return;
+            try{
+                const tokenRef=firestoreInstance.collection('qrTokens').doc(tokenHash);
+                const snap=await tokenRef.get();
+                const personKey=snap.exists?snap.data()?.personKey:null;
+                const batch=firestoreInstance.batch();
+                batch.set(tokenRef,{
+                    lastUsedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    lastUsedBy:authInstance?.currentUser?.uid||'',
+                    scanCount:firebase.firestore.FieldValue.increment(1)
+                },{merge:true});
+                if(personKey){
+                    batch.set(firestoreInstance.collection('qrAssignments').doc(personKey),{
+                        lastUsedAt:firebase.firestore.FieldValue.serverTimestamp()
+                    },{merge:true});
+                }
+                await batch.commit();
+            }catch(e){
+                console.warn('Tidak dapat memperbarui statistik token',e);
+            }
+        };
+
+        const issueSecureQRToken=async({personType,personId,name,group='',days=SECURE_QR_TOKEN_DAYS_DEFAULT,issuedBy=''})=>{
+            if(!firestoreInstance) throw new Error('Firestore belum terhubung.');
+            if(!crypto?.subtle) throw new Error('Browser tidak mendukung Web Crypto. Gunakan HTTPS dan browser modern.');
+            const personKey=`${personType}_${personId}`;
+            const assignmentRef=firestoreInstance.collection('qrAssignments').doc(personKey);
+            const oldAssignment=await assignmentRef.get();
+
+            const token=randomSecureToken();
+            const tokenHash=await sha256Hex(token);
+            const payload=SECURE_QR_PREFIX+token;
+            const now=new Date();
+            const expiry=new Date(now.getTime()+Math.max(1,Number(days)||365)*86400000);
+            const batch=firestoreInstance.batch();
+
+            if(oldAssignment.exists){
+                const oldHash=oldAssignment.data()?.tokenHash;
+                if(oldHash && oldHash!==tokenHash){
+                    batch.set(firestoreInstance.collection('qrTokens').doc(oldHash),{
+                        active:false,
+                        revokedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                        revokedBy:authInstance?.currentUser?.uid||'',
+                        revokeReason:'Regenerated'
+                    },{merge:true});
+                }
+            }
+
+            batch.set(firestoreInstance.collection('qrTokens').doc(tokenHash),{
+                personType,
+                personId,
+                personKey,
+                name:auditSafeText(name,160),
+                group:auditSafeText(group,120),
+                active:true,
+                issuedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                issuedBy:issuedBy||authInstance?.currentUser?.uid||'',
+                expiresAt:firebase.firestore.Timestamp.fromDate(expiry),
+                revokedAt:null,
+                tokenVersion:55,
+                tokenSuffix:token.slice(-6),
+                scanCount:0,
+                lastUsedAt:null,
+                lastUsedBy:''
+            },{merge:false});
+
+            batch.set(assignmentRef,{
+                personType,
+                personId,
+                personKey,
+                name:auditSafeText(name,160),
+                group:auditSafeText(group,120),
+                tokenHash,
+                tokenSuffix:token.slice(-6),
+                active:true,
+                issuedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                issuedBy:issuedBy||authInstance?.currentUser?.uid||'',
+                expiresAt:firebase.firestore.Timestamp.fromDate(expiry),
+                tokenVersion:55
+            },{merge:true});
+
+            await batch.commit();
+            await writeAuditLog({
+                action:oldAssignment.exists?'QR_REGENERATE':'QR_ISSUE',
+                module:'QR Security',
+                collection:'qrAssignments',
+                documentId:personKey,
+                detail:`Token aman diterbitkan untuk ${name}`
+            });
+            return {payload,tokenHash,personKey,expiresAt:expiry};
+        };
+
+        const revokeSecureQRToken=async(personKey,reason='Revoked by management')=>{
+            if(!firestoreInstance) throw new Error('Firestore belum terhubung.');
+            const assignmentRef=firestoreInstance.collection('qrAssignments').doc(personKey);
+            const snap=await assignmentRef.get();
+            if(!snap.exists) throw new Error('Assignment token tidak ditemukan.');
+            const data=snap.data();
+            const batch=firestoreInstance.batch();
+            if(data.tokenHash){
+                batch.set(firestoreInstance.collection('qrTokens').doc(data.tokenHash),{
+                    active:false,
+                    revokedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                    revokedBy:authInstance?.currentUser?.uid||'',
+                    revokeReason:auditSafeText(reason,160)
+                },{merge:true});
+            }
+            batch.set(assignmentRef,{
+                active:false,
+                revokedAt:firebase.firestore.FieldValue.serverTimestamp(),
+                revokedBy:authInstance?.currentUser?.uid||'',
+                revokeReason:auditSafeText(reason,160)
+            },{merge:true});
+            await batch.commit();
+            await writeAuditLog({
+                action:'QR_REVOKE',
+                module:'QR Security',
+                collection:'qrAssignments',
+                documentId:personKey,
+                detail:auditSafeText(reason,160),
+                severity:'warning'
+            });
+        };
+
+        // Generator QR legacy dinonaktifkan pada v55. Kartu lama harus diganti dengan Secure QR.
+        const buildStudentQRPayload = () => '';
+        const parseStudentQRPayload = () => null;
+        const buildStaffQRPayload = () => '';
+        const parseStaffQRPayload = () => null;
 
         const QRCodeBox = ({text,size=140}) => {
             const ref=useRef(null);
@@ -8221,6 +8402,179 @@ service firebase.storage {
 
 
 
+
+
+        const QRSecurityManagementView = () => {
+            const { data, user } = useContext(AppContext);
+            const [mode,setMode]=useState('murid');
+            const [selectedClass,setSelectedClass]=useState('Semua');
+            const [search,setSearch]=useState('');
+            const [days,setDays]=useState(365);
+            const [assignments,setAssignments]=useState({});
+            const [generated,setGenerated]=useState({});
+            const [busy,setBusy]=useState(false);
+            const [progress,setProgress]=useState('');
+
+            const classes=['Semua',...Object.keys(classMeta)];
+            const people=mode==='murid'
+                ? (data.students||[]).filter(s=>(selectedClass==='Semua'||s.class===selectedClass)&&`${s.name} ${s.nisn||''}`.toLowerCase().includes(search.toLowerCase()))
+                : (data.users||[]).filter(e=>`${e.name} ${e.nip||''} ${e.email||''}`.toLowerCase().includes(search.toLowerCase()));
+
+            const personType=mode==='murid'?'murid':'pegawai';
+            const personKey=p=>`${personType}_${p.id}`;
+            const group=p=>mode==='murid'?`Kelas ${p.class}`:(p.jabatan||p.role||'Pegawai');
+
+            const loadAssignments=async()=>{
+                if(!firestoreInstance) return;
+                setBusy(true);
+                try{
+                    const snap=await firestoreInstance.collection('qrAssignments').get();
+                    const map={};
+                    snap.docs.forEach(d=>map[d.id]={id:d.id,...d.data()});
+                    setAssignments(map);
+                }catch(e){
+                    alert(`Gagal memuat token QR: ${e.code||''} ${e.message||e}`);
+                }finally{setBusy(false);}
+            };
+            useEffect(()=>{loadAssignments();},[]);
+
+            const issueOne=async(p)=>{
+                setBusy(true);
+                try{
+                    const result=await issueSecureQRToken({
+                        personType,
+                        personId:p.id,
+                        name:p.name,
+                        group:group(p),
+                        days,
+                        issuedBy:authInstance?.currentUser?.uid||''
+                    });
+                    setGenerated(prev=>({...prev,[personKey(p)]:result.payload}));
+                    await loadAssignments();
+                }catch(e){alert(e.message||e);}
+                finally{setBusy(false);}
+            };
+
+            const revokeOne=async(p)=>{
+                if(!confirm(`Cabut Secure QR milik ${p.name}? Kartu tersebut langsung tidak dapat dipakai.`)) return;
+                setBusy(true);
+                try{
+                    await revokeSecureQRToken(personKey(p),'Dicabut dari panel v55');
+                    setGenerated(prev=>{const n={...prev};delete n[personKey(p)];return n;});
+                    await loadAssignments();
+                }catch(e){alert(e.message||e);}
+                finally{setBusy(false);}
+            };
+
+            const issueBatch=async()=>{
+                if(!people.length) return;
+                if(!confirm(`Terbitkan/regenerasi Secure QR untuk ${people.length} ${mode==='murid'?'murid':'pegawai'} pada filter ini?\n\nQR aktif lama akan otomatis dicabut.`)) return;
+                setBusy(true);
+                let done=0,failed=0;
+                const newGenerated={...generated};
+                for(let i=0;i<people.length;i+=10){
+                    const chunk=people.slice(i,i+10);
+                    const results=await Promise.allSettled(chunk.map(async p=>{
+                        const r=await issueSecureQRToken({
+                            personType,personId:p.id,name:p.name,group:group(p),days,
+                            issuedBy:authInstance?.currentUser?.uid||''
+                        });
+                        return {key:personKey(p),payload:r.payload};
+                    }));
+                    results.forEach(r=>{
+                        if(r.status==='fulfilled'){done++;newGenerated[r.value.key]=r.value.payload;}
+                        else failed++;
+                    });
+                    setProgress(`${done+failed}/${people.length} diproses • ${failed} gagal`);
+                }
+                setGenerated(newGenerated);
+                await loadAssignments();
+                setBusy(false);
+                setProgress(`Selesai: ${done} berhasil • ${failed} gagal`);
+            };
+
+            const printCard=(p,payload)=>{
+                if(!payload) return alert('Payload Secure QR tidak tersedia pada sesi ini. Regenerasi token lalu cetak kartu baru.');
+                const holder=document.createElement('div');
+                new QRCode(holder,{text:payload,width:220,height:220,correctLevel:QRCode.CorrectLevel.M});
+                setTimeout(()=>{
+                    const canvas=holder.querySelector('canvas'), img=holder.querySelector('img');
+                    const qr=canvas?canvas.toDataURL('image/png'):img?.src;
+                    const w=window.open('','_blank','width=720,height=720');
+                    w.document.write(`<html><head><title>Secure QR ${p.name}</title><style>@page{size:auto;margin:8mm}body{font-family:Arial;background:#f4f6f8;padding:20px}.card{width:85.6mm;height:53.98mm;background:linear-gradient(135deg,#0a2472,#005f73);color:#fff;border-radius:14px;overflow:hidden;position:relative;margin:auto}.top{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.2)}.logo{width:34px;height:34px;border-radius:50%;background:#fff;padding:2px;object-fit:contain}.school{font-size:9px}.title{font-weight:bold;font-size:13px}.body{display:flex;gap:10px;padding:10px 12px;align-items:center}.qr{width:105px;height:105px;background:#fff;padding:5px;border-radius:8px}.name{font-size:13px;font-weight:bold}.meta{font-size:8px;margin-top:5px}.badge{display:inline-block;background:#e9c46a;color:#0a2472;font-size:7px;font-weight:bold;padding:3px 7px;border-radius:9px;margin-top:6px}.foot{position:absolute;right:8px;bottom:5px;font-size:6px;opacity:.7}</style></head><body><div class="card"><div class="top"><img class="logo" src="${SCHOOL_LOGO}"><div><div class="school">SMA NEGERI 1 MANTANG</div><div class="title">SIMAK SMANTANG</div></div></div><div class="body"><img class="qr" src="${qr}"><div><div class="name">${p.name}</div><div class="meta">${group(p)}</div><div class="meta">${mode==='murid'?'NISN: '+(p.nisn||'-'):(p.nip||p.email||'-')}</div><span class="badge">SECURE QR v55</span></div></div><div class="foot">Opaque Token • Revocable • Firestore Verified</div></div><script>setTimeout(()=>window.print(),350)<\/script></body></html>`);
+                    w.document.close();
+                },120);
+            };
+
+            const printGenerated=()=>{
+                const list=people.map(p=>({p,payload:generated[personKey(p)]})).filter(x=>x.payload);
+                if(!list.length) return alert('Belum ada Secure QR baru pada sesi ini. Klik Terbitkan/Regenerasi terlebih dahulu.');
+                const w=window.open('','_blank','width=1200,height=900');
+                w.document.write(`<html><head><title>Secure QR SIMAK v55</title><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script><style>@page{size:A4;margin:8mm}body{font-family:Arial}.sheet{display:grid;grid-template-columns:repeat(2,1fr);gap:8mm}.card{width:85.6mm;height:53.98mm;background:linear-gradient(135deg,#0a2472,#005f73);color:#fff;border-radius:12px;overflow:hidden;position:relative;break-inside:avoid}.top{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.2);font-size:9px;font-weight:bold}.body{display:flex;gap:8px;align-items:center;padding:8px 10px}.qr{background:#fff;padding:4px;border-radius:7px}.name{font-size:11px;font-weight:bold}.meta{font-size:7px;margin-top:4px}.badge{display:inline-block;background:#e9c46a;color:#0a2472;font-size:6.5px;font-weight:bold;padding:2px 6px;border-radius:8px;margin-top:5px}</style></head><body><div class="sheet">${list.map((x,i)=>`<div class="card"><div class="top">SMA NEGERI 1 MANTANG • SIMAK SMANTANG</div><div class="body"><div id="qr${i}" class="qr"></div><div><div class="name">${x.p.name}</div><div class="meta">${group(x.p)}</div><div class="meta">${mode==='murid'?'NISN: '+(x.p.nisn||'-'):(x.p.nip||x.p.email||'-')}</div><span class="badge">SECURE QR v55</span></div></div></div>`).join('')}</div><script>const payloads=${JSON.stringify(list.map(x=>x.payload))};payloads.forEach((t,i)=>new QRCode(document.getElementById('qr'+i),{text:t,width:90,height:90}));setTimeout(()=>window.print(),900);<\/script></body></html>`);
+                w.document.close();
+            };
+
+            const activeCount=people.filter(p=>assignments[personKey(p)]?.active===true).length;
+            const missingCount=people.length-activeCount;
+
+            return <div className="space-y-6 animate-fade-in">
+                <div className="bg-gradient-to-r from-brand-navy via-blue-900 to-brand-sea rounded-2xl p-6 text-white shadow-lg">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-brand-gold">QR SECURITY HARDENING • v55</p>
+                    <h2 className="text-2xl md:text-3xl font-bold mt-2">Manajemen Token Secure QR</h2>
+                    <p className="text-sm text-white/75 mt-1">Token acak 256-bit • SHA-256 • Revocable • Expiring • Tanpa NISN/NIP pada payload QR</p>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <StatCard title="Pada Filter" value={people.length} icon="fa-id-card" colorClass="bg-brand-navy" subtitle={mode==='murid'?'Murid':'Pegawai'} />
+                    <StatCard title="Token Aktif" value={activeCount} icon="fa-shield-halved" colorClass="bg-green-600" subtitle="Siap dipindai" />
+                    <StatCard title="Belum Aktif" value={missingCount} icon="fa-triangle-exclamation" colorClass="bg-amber-500" subtitle="Perlu diterbitkan" />
+                    <StatCard title="Masa Berlaku" value={`${days} hari`} icon="fa-calendar-check" colorClass="bg-brand-sea" subtitle="Saat penerbitan" />
+                </div>
+
+                <Card title="Penerbitan & Filter">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                        <select value={mode} onChange={e=>{setMode(e.target.value);setGenerated({});}} className="border rounded-lg p-2.5 text-sm"><option value="murid">Murid</option><option value="pegawai">Guru & Tendik</option></select>
+                        {mode==='murid'&&<select value={selectedClass} onChange={e=>setSelectedClass(e.target.value)} className="border rounded-lg p-2.5 text-sm">{classes.map(c=><option key={c}>{c}</option>)}</select>}
+                        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nama / NISN / NIP" className="border rounded-lg p-2.5 text-sm"/>
+                        <input type="number" min="1" max="1095" value={days} onChange={e=>setDays(e.target.value)} className="border rounded-lg p-2.5 text-sm" title="Masa berlaku hari"/>
+                        <button disabled={busy} onClick={issueBatch} className="bg-brand-navy text-white rounded-lg px-4 py-2.5 text-xs font-bold disabled:opacity-50"><i className="fas fa-shield mr-2"></i>{busy?'Memproses...':'Terbitkan/Regenerasi Filter'}</button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                        <button onClick={loadAssignments} disabled={busy} className="px-4 py-2 border rounded-lg text-xs font-bold"><i className="fas fa-rotate mr-2"></i>Refresh Token</button>
+                        <button onClick={printGenerated} className="px-4 py-2 border border-brand-sea text-brand-sea rounded-lg text-xs font-bold"><i className="fas fa-print mr-2"></i>Cetak Secure QR Baru</button>
+                    </div>
+                    {progress&&<p className="text-xs text-gray-500 mt-3">{progress}</p>}
+                    <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg p-3 mt-3">Token mentah hanya tersedia saat diterbitkan pada sesi ini dan tidak disimpan di Firestore. Jika kartu perlu dicetak ulang setelah halaman ditutup, regenerasi token; kartu lama otomatis dicabut.</p>
+                </Card>
+
+                <Card title="Status Token">
+                    <div className="overflow-x-auto max-h-[650px]">
+                        <table className="w-full text-xs min-w-[900px]">
+                            <thead className="sticky top-0 bg-gray-50"><tr><th className="px-3 py-3 text-left">Nama</th><th className="px-3 py-3 text-left">Kelas/Jabatan</th><th className="px-3 py-3">Status</th><th className="px-3 py-3">Berlaku Sampai</th><th className="px-3 py-3">Token</th><th className="px-3 py-3">Aksi</th></tr></thead>
+                            <tbody>{people.map(p=>{
+                                const key=personKey(p),a=assignments[key],payload=generated[key];
+                                return <tr key={key} className="border-b">
+                                    <td className="px-3 py-3 font-semibold">{p.name}<div className="text-[10px] text-gray-400 font-normal">{mode==='murid'?p.nisn:(p.nip||p.email||'')}</div></td>
+                                    <td className="px-3 py-3">{group(p)}</td>
+                                    <td className="px-3 py-3 text-center">{a?.active?<span className="px-2 py-1 rounded-full bg-green-100 text-green-700 font-bold">AKTIF</span>:<span className="px-2 py-1 rounded-full bg-gray-100 text-gray-500 font-bold">BELUM/NONAKTIF</span>}</td>
+                                    <td className="px-3 py-3 text-center">{formatMonitorDate(a?.expiresAt)}</td>
+                                    <td className="px-3 py-3 text-center font-mono">{a?.tokenSuffix?`…${a.tokenSuffix}`:'-'}</td>
+                                    <td className="px-3 py-3"><div className="flex flex-wrap justify-center gap-1">
+                                        <button disabled={busy} onClick={()=>issueOne(p)} className="px-2 py-1.5 bg-brand-navy text-white rounded text-[10px] font-bold">{a?.active?'Regenerasi':'Terbitkan'}</button>
+                                        {payload&&<button onClick={()=>printCard(p,payload)} className="px-2 py-1.5 border border-brand-sea text-brand-sea rounded text-[10px] font-bold">Cetak</button>}
+                                        {a?.active&&<button disabled={busy} onClick={()=>revokeOne(p)} className="px-2 py-1.5 border border-red-200 text-red-600 rounded text-[10px] font-bold">Cabut</button>}
+                                    </div></td>
+                                </tr>;
+                            })}</tbody>
+                        </table>
+                    </div>
+                </Card>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-xs text-blue-800">
+                    <i className="fas fa-lock mr-2"></i>Payload QR hanya berisi token acak. Identitas murid/pegawai tidak dapat dibaca dari QR. Scanner meng-hash token dengan SHA-256 dan memverifikasi statusnya terhadap Firestore sebelum absensi ditulis.
+                </div>
+            </div>;
+        };
 
         const ProductionMonitoringView = () => {
             const { user, activePeriod, cloudStatus } = useContext(AppContext);
@@ -9906,12 +10260,12 @@ service firebase.storage {
 
         const ROLE_ACCESS_MATRIX = {
             'Kepala Sekolah': [
-                'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','izin',
+                'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
                 'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54'
             ],
             'Wakil Kurikulum': [
-                'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','izin',
+                'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
                 'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54'
             ],
@@ -9989,7 +10343,8 @@ service firebase.storage {
                 { id: 'rekapabsensi', label: 'Rekap Absensi', icon: 'fa-chart-column' },
                 { id: 'rekapqr', label: 'Rekap Kehadiran QR', icon: 'fa-chart-simple' },
                 { id: 'kartuid', label: 'Kartu Identitas QR', icon: 'fa-id-card-clip' },
-                { id: 'checkio', label: 'Check-in & Check-out QR', icon: 'fa-right-left' },
+                { id: 'checkio', label: 'Secure Check-in & Check-out QR', icon: 'fa-right-left' },
+                { id: 'qrsecurity55', label: 'Manajemen Token QR v55', icon: 'fa-shield-halved' },
                 { id: 'izin', label: 'Izin & Dispensasi', icon: 'fa-file-circle-check' },
                 { id: 'nilai', label: 'Nilai & Asesmen', icon: 'fa-square-poll-vertical' },
                 { id: 'remedial', label: 'Remedial & Pengayaan', icon: 'fa-arrows-rotate' },
@@ -10025,7 +10380,7 @@ service firebase.storage {
                 },
                 {
                     id:'akademik', label:'Akademik', icon:'fa-book-open',
-                    items:['jadwal','absensi','rekapabsensi','absensipegawai','monitoringmengajar','jurnalpiket','nilai','remedial','tka']
+                    items:['jadwal','absensi','rekapabsensi','rekapqr','absensipegawai','monitoringmengajar','jurnalpiket','checkio','qrsecurity55','nilai','remedial','tka']
                 },
                 {
                     id:'pembinaan', label:'Murid & Pembinaan', icon:'fa-people-group',
@@ -10472,7 +10827,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','54');
+                    localStorage.setItem('simak_schema_version','55');
                 }catch(e){}
             },[rawData]);
 
@@ -10527,6 +10882,7 @@ service firebase.storage {
                     case 'rekapabsensi': return <AttendanceReportView />;
                     case 'rekapqr': return <QRAttendanceRecapView />;
                     case 'checkio': return <CheckInOutQRView />;
+                    case 'qrsecurity55': return <QRSecurityManagementView />;
                     case 'izin': return <LeavePermissionCenterView />;
                     case 'kartuid': return <IdentityCardQRView />;
                     case 'nilai': return <AssessmentView />;

@@ -58,6 +58,24 @@ service cloud.firestore {
       allow delete: if roleIs('Kepala Sekolah');
     }
 
+
+    match /qrAssignments/{personKey} {
+      allow read: if isManagement();
+      allow create, update, delete: if isManagement();
+    }
+
+    match /qrTokens/{tokenHash} {
+      allow read: if isStaff();
+      allow create, delete: if isManagement();
+      allow update: if isManagement()
+        || (
+          isStaff()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'lastUsedAt','lastUsedBy','scanCount'
+          ])
+        );
+    }
+
     match /students/{studentId} {
       allow read: if isStaff() || ownStudent(studentId) || parentOf(studentId);
       allow create, update, delete: if isManagement() || roleIs('Tenaga Kependidikan');

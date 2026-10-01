@@ -1,0 +1,19 @@
+SIMAK SMANTANG v55 — QR SECURITY ROLLOUT CHECKLIST
+
+[ ] index.html v55 terdeploy ke Vercel
+[ ] firestore.rules v55 dipublish
+[ ] Login Kepala Sekolah/Wakil Kurikulum berhasil
+[ ] Menu Manajemen Token QR v55 tampil hanya untuk manajemen
+[ ] Terbitkan 1 Secure QR murid uji
+[ ] Terbitkan 1 Secure QR pegawai uji
+[ ] Secure QR murid berhasil check-in
+[ ] Secure QR murid berhasil check-out
+[ ] Secure QR pegawai berhasil check-in
+[ ] Scan ganda ditolak
+[ ] QR legacy ditolak
+[ ] Token revoked ditolak
+[ ] Token regenerasi membuat kartu lama tidak valid
+[ ] Audit QR_CHECKIN/QR_CHECKOUT muncul di v54 Monitoring
+[ ] Batch penerbitan per kelas berhasil
+[ ] Kartu lama ditarik/dinyatakan tidak berlaku
+[ ] Secure QR baru dibagikan
