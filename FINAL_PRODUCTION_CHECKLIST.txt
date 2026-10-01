@@ -1,0 +1,34 @@
+SIMAK SMANTANG v60 — FINAL PRODUCTION READINESS CHECKLIST
+
+AUTOMATED
+[ ] Firebase Config Production siap
+[ ] Firebase Authentication siap
+[ ] Firestore siap
+[ ] Project ID simak-sman1mantang
+[ ] Zona waktu Asia/Jakarta / WIB
+[ ] Periode akademik aktif
+[ ] Realtime LIVE dan listener > 0
+[ ] Firestore read/write sehat
+[ ] Profil akun Production terbaca
+[ ] Data murid cloud terbaca
+
+MANUAL
+[ ] Kepala Sekolah login
+[ ] Wakil Kurikulum login
+[ ] Guru login
+[ ] Guru Piket login
+[ ] Murid login
+[ ] Orang Tua/Wali login
+[ ] Tenaga Kependidikan login
+[ ] Realtime dua perangkat berhasil
+[ ] Secure QR murid berhasil
+[ ] Secure QR pegawai berhasil
+[ ] Reset password akun uji berhasil
+[ ] Izin diuji
+[ ] Nilai/asesmen diuji
+[ ] Laporan diuji
+[ ] Snapshot Firestore dibuat
+[ ] Backup Admin SDK dibuat
+[ ] Backup disalin ke lokasi kedua
+[ ] SOP rollback Vercel diketahui PIC
+[ ] Last Known Good ditandai setelah seluruh pemeriksaan kritis lulus

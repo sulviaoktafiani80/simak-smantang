@@ -1,37 +1,44 @@
-# SIMAK SMANTANG v57.4 — Persistent Firebase Production Bootstrap
+# SIMAK SMANTANG v61 — PWA, Mobile Polish & User Onboarding
 
-## Akar masalah yang diperbaiki
-Pada v57.1–v57.3, data Firestore dapat sehat tetapi runtime aplikasi kadang mulai sebelum Firebase benar-benar terinisialisasi atau konfigurasi lokal kosong setelah deployment/browser reset. Dampaknya:
-- `0 listener`;
-- Realtime terus `Menghubungkan...`;
-- Manajemen Akun dapat membutuhkan Recovery Load/manual initialization.
+v61 dibangun di atas v60 yang sudah stabil. Core Firebase, realtime, security, dan disaster recovery tidak diubah.
 
-## Perbaikan v57.4
-- Firebase web config project `simak-sman1mantang` menjadi default Production di aplikasi.
-- Nilai kosong dari localStorage tidak dapat menimpa default config.
-- Pada hostname Vercel SIMAK, mode otomatis `production`.
-- Bootstrap otomatis menunggu Firebase SDK dan retry dengan backoff.
-- Auth persistence menggunakan Firebase `LOCAL`.
-- `onAuthStateChanged` baru dipasang setelah Auth + Firestore siap.
-- Realtime listener baru dipasang setelah bootstrap selesai.
-- Login dapat memicu self-healing bootstrap.
-- Recovery Load dapat memicu bootstrap sendiri.
-- Session Firebase dipulihkan otomatis setelah refresh.
-- Fallback v57.3 tetap dipertahankan: realtime error tidak mengosongkan data akun.
+## PWA
+- `manifest.webmanifest`
+- `service-worker.js`
+- icon 192, 512, Apple Touch Icon
+- mode `standalone`
+- tombol `Pasang App` ketika browser mendukung
+- offline fallback tanpa mencoba memalsukan data cloud
+- navigasi selalu network-first agar versi Production terbaru tidak tertahan cache lama
 
-## Konfigurasi Production
-Project ID: `simak-sman1mantang`
+## Mobile Polish
+- bottom navigation: Beranda, Jadwal, Notifikasi, Menu
+- safe-area untuk HP
+- touch target minimum lebih nyaman
+- konten utama diberi ruang dari bottom navigation
+- input mobile tidak mudah memicu zoom kecil pada browser
 
-Firebase Web API key bukan private server credential. Keamanan data tetap dikendalikan oleh Firebase Authentication dan Firestore Security Rules. Jangan pernah memasukkan service-account private key ke HTML.
+## User Onboarding
+Tampil sekali per role/browser:
+1. pengenalan sesuai role;
+2. cara navigasi;
+3. realtime, WIB, dan pemasangan PWA.
 
-## Deploy
-Upload `index.html` v57.4 ke GitHub/Vercel. Rules tidak berubah dari v57.3.
+Pengguna dapat membuka ulang dari tombol `Panduan` di bagian bawah sidebar.
+
+## Deploy v61
+Untuk PWA, upload bukan hanya `index.html`. Upload ke repository:
+- `index.html`
+- `manifest.webmanifest`
+- `service-worker.js`
+- `offline.html`
+- folder `icons/`
+- `vercel.json`
 
 Setelah Vercel Ready:
 1. Ctrl+F5.
-2. Login Firebase.
-3. Pastikan akun terbaca 166.
-4. Pastikan status menjadi `Realtime LIVE`.
-5. Pastikan listener > 0.
-6. Reload browser dan pastikan tidak perlu lagi membuka menu Firebase Production.
-7. Uji dua perangkat.
+2. Chrome/Edge: lihat tombol `Pasang App` atau icon Install di address bar.
+3. HP Android Chrome: menu browser → Install app / Tambahkan ke layar utama.
+4. iPhone Safari: Share → Add to Home Screen.
+
+Firestore Rules tidak perlu diubah khusus v61.

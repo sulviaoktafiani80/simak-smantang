@@ -4,6 +4,5 @@ node_modules/
 output/
 .env
 .env.*
-temporary-credentials.csv
-provisioning-results.csv
 password-reset-results-*.csv
+*.backup-secret

@@ -1,0 +1,47 @@
+SIMAK SMANTANG v60 — SOP DISASTER RECOVERY
+
+PRINSIP UTAMA
+1. Jangan restore data hanya karena tampilan aplikasi bermasalah.
+2. Selalu buat backup baru sebelum tindakan pemulihan.
+3. Rollback source/deployment dilakukan sebelum restore database bila masalah berasal dari kode.
+4. Jangan pernah upload serviceAccountKey.json atau file output backup ke GitHub publik.
+
+A. JIKA DEPLOYMENT ERROR / LAYAR PUTIH
+1. Buka Vercel project SIMAK.
+2. Deployment → pilih deployment terakhir yang diketahui stabil.
+3. Promote to Production / Redeploy.
+4. Ctrl+F5.
+5. Login dan jalankan Final Readiness Check.
+6. Tidak perlu restore Firestore jika data cloud masih utuh.
+
+B. JIKA FIREBASE TIDAK TERHUBUNG
+1. Pastikan project ID = simak-sman1mantang.
+2. Cek Firebase Status/console.
+3. Periksa Firestore Rules dan Authentication.
+4. Jangan provisioning ulang akun.
+5. Jalankan health check setelah koneksi pulih.
+
+C. BACKUP ADMIN SDK
+Di folder v60:
+1. Letakkan serviceAccountKey.json secara lokal.
+2. npm install
+3. npm run backup
+4. Salin folder output ke media/lokasi kedua yang aman.
+Backup berisi data Firestore dan metadata Firebase Auth. PASSWORD pengguna tidak disertakan.
+
+D. RESTORE FIRESTORE
+HANYA jika data cloud rusak/hilang dan sudah ada persetujuan internal:
+1. Buat backup keadaan terkini terlebih dahulu.
+2. Tentukan backup yang benar.
+3. Jalankan:
+   node restore-firestore.mjs ./output/<folder>/firestore.json --confirm=RESTORE
+Restore menggunakan merge dan tidak menghapus dokumen lain.
+
+E. SETELAH PEMULIHAN
+1. Login Kepala Sekolah/Wakil Kurikulum.
+2. Jalankan Final Readiness Check.
+3. Pastikan akun, murid, periode aktif, realtime, dan read/write sehat.
+4. Uji dua perangkat.
+5. Uji Secure QR.
+6. Uji nilai, izin, laporan.
+7. Tandai Last Known Good bila seluruh pemeriksaan kritis lulus.

@@ -1,0 +1,42 @@
+SIMAK SMANTANG v61 — PWA / MOBILE / ONBOARDING CHECKLIST
+
+DEPLOY
+[ ] index.html v61
+[ ] manifest.webmanifest
+[ ] service-worker.js
+[ ] offline.html
+[ ] icons/icon-192.png
+[ ] icons/icon-512.png
+[ ] icons/apple-touch-icon.png
+
+PWA
+[ ] Browser mendeteksi manifest
+[ ] Icon SIMAK tampil
+[ ] Install App tersedia pada browser yang mendukung
+[ ] Setelah install, aplikasi terbuka mode standalone
+[ ] Update deployment tetap muncul karena navigation network-first
+[ ] Saat benar-benar offline muncul fallback yang jelas
+
+MOBILE
+[ ] Bottom nav tampil di HP
+[ ] Beranda bekerja
+[ ] Jadwal bekerja sesuai role
+[ ] Notifikasi bekerja sesuai role
+[ ] Menu membuka sidebar
+[ ] Tidak menutupi tombol/form di bawah
+[ ] Sidebar tetap dapat discroll
+
+ONBOARDING
+[ ] Panduan tampil pada penggunaan pertama
+[ ] Konten sesuai role
+[ ] Selesai menyimpan status
+[ ] Tombol Panduan dapat membuka ulang
+[ ] Tombol Pasang App bekerja bila install prompt tersedia
+
+CORE PRODUCTION REGRESSION
+[ ] Login normal
+[ ] 166 akun tetap terbaca
+[ ] 146 murid tetap terbaca
+[ ] Realtime LIVE
+[ ] Secure QR tetap bekerja
+[ ] Final Readiness v60 tetap dapat dibuka

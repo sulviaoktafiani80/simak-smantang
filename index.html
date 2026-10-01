@@ -3,7 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v60 - Final Production Readiness & Disaster Recovery</title>
+    <meta name="theme-color" content="#0a2472">
+    <meta name="description" content="SIMAK SMANTANG - Sistem Informasi Manajemen Akademik dan Kurikulum SMA Negeri 1 Mantang">
+    <meta name="application-name" content="SIMAK SMANTANG">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SIMAK SMANTANG">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+
+    <title>SIMAK SMANTANG v61 - PWA, Mobile Polish & User Onboarding</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -98,15 +109,29 @@
         @media (max-width:767px){
             .nav-scroll{max-height:calc(100vh - 205px)!important;padding-bottom:84px;}
         }
+
+        /* v61 PWA + Mobile Polish */
+        html,body,#root{min-height:100%;overscroll-behavior-y:none;}
+        body{padding-bottom:env(safe-area-inset-bottom);}
+        .simak-mobile-bottom{padding-bottom:max(.55rem,env(safe-area-inset-bottom));}
+        .simak-touch{min-height:44px;min-width:44px;}
+        @media (max-width:767px){
+            main{scroll-padding-bottom:92px;}
+            input,select,textarea,button{font-size:16px;}
+            .simak-mobile-card{border-radius:16px;}
+        }
+        @media (display-mode:standalone){
+            .pwa-install-only{display:none!important;}
+        }
 </style>
 </head>
 <body>
-    <!-- SIMAK SMANTANG v52.2 - Go-Live Bootstrap Fix -->
+    <!-- SIMAK SMANTANG v61 - PWA Mobile Onboarding -->
     <div id="boot-fallback" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f8fafc;font-family:Arial,sans-serif;color:#0f2f75;">
         <div style="text-align:center;padding:24px;">
             <div style="width:42px;height:42px;border:4px solid #dbeafe;border-top-color:#0f766e;border-radius:50%;margin:0 auto 14px;animation:simakspin 1s linear infinite;"></div>
             <div style="font-weight:700;font-size:16px;">Menyiapkan SIMAK SMANTANG...</div>
-            <div style="font-size:12px;color:#64748b;margin-top:6px;">v59.1 • Firebase Production</div>
+            <div style="font-size:12px;color:#64748b;margin-top:6px;">v61 • PWA Production</div>
         </div>
     </div>
     <style>@keyframes simakspin{to{transform:rotate(360deg)}}</style>
@@ -1898,7 +1923,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v60 • Final Production Readiness • Disaster Recovery</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v61 • PWA • Mobile Polish • User Onboarding</span>
                         </div>
                     </div>
                 </div>
@@ -8139,7 +8164,7 @@ service firebase.storage {
 
 
         // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
-        const REALTIME_ENGINE_VERSION='60';
+        const REALTIME_ENGINE_VERSION='61';
         const realtimeLocalWriteRegistry = new Map();
 
         const registerRealtimeLocalWrite=(collectionName,docId)=>{
@@ -8331,7 +8356,7 @@ service firebase.storage {
                     actorName:auditSafeText(current?.displayName||'',120),
                     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
                     clientTime:new Date().toISOString(),
-                    appVersion:'60'
+                    appVersion:'61'
                 });
             }catch(e){
                 console.warn('Audit log gagal',e);
@@ -8356,7 +8381,7 @@ service firebase.storage {
                     actorEmail:u?.email||'',
                     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
                     clientTime:new Date().toISOString(),
-                    appVersion:'60'
+                    appVersion:'61'
                 });
             }catch(e){
                 console.warn('System event gagal',e);
@@ -8371,7 +8396,7 @@ service firebase.storage {
                     lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
                     loginCount:firebase.firestore.FieldValue.increment(1),
                     lastClient:'web',
-                    lastAppVersion:'60'
+                    lastAppVersion:'61'
                 },{merge:true});
             }catch(e){
                 console.warn('Account activity update ditolak/gagal',e);
@@ -8383,7 +8408,7 @@ service firebase.storage {
             try{
                 await firestoreInstance.collection('users').doc(authInstance.currentUser.uid).set({
                     lastSeenAt:firebase.firestore.FieldValue.serverTimestamp(),
-                    lastAppVersion:'60'
+                    lastAppVersion:'61'
                 },{merge:true});
             }catch(e){}
         };
@@ -9372,7 +9397,7 @@ service firebase.storage {
                             checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
                             checkedBy:user?.name||'-',
                             checkedByUid:authInstance?.currentUser?.uid||'',
-                            appVersion:'60',
+                            appVersion:'61',
                             activePeriodId:activePeriod?.id||null,
                             timezone:SIMAK_TIME_ZONE,
                             sourceUrl:location.origin
@@ -9497,7 +9522,7 @@ service firebase.storage {
                 try{
                     const ref=firestoreInstance.collection('systemConfig').doc('last_known_good');
                     await ref.set({
-                        appVersion:'60',
+                        appVersion:'61',
                         markedAt:firebase.firestore.FieldValue.serverTimestamp(),
                         markedBy:user?.name||'-',
                         markedByUid:authInstance?.currentUser?.uid||'',
@@ -9660,7 +9685,7 @@ service firebase.storage {
                         checkedAt:firebase.firestore.FieldValue.serverTimestamp(),
                         checkedBy:user?.name||'-',
                         checkedByUid:user?.uid||'',
-                        appVersion:'60',
+                        appVersion:'61',
                         academicPeriod:activePeriod?.id||null
                     },{merge:true});
                     const snap=await ref.get();
@@ -11353,11 +11378,122 @@ service firebase.storage {
             </div>;
         };
 
+
+        const PWAOnboardingModal = ({user,onClose,onInstall,installAvailable,isStandalone}) => {
+            const [step,setStep]=useState(0);
+            const role=normalizeAccessRole(user);
+            const roleGuide={
+                'Kepala Sekolah':'Pantau dashboard eksekutif, laporan, audit, dan readiness Production.',
+                'Wakil Kurikulum':'Kelola kurikulum, periode, supervisi, data akademik, dan monitoring Production.',
+                'Guru':'Gunakan jadwal, absensi, nilai, remedial, perangkat ajar, dan pembinaan murid.',
+                'Guru Piket':'Fokus pada absensi, monitoring guru mengajar, jurnal piket, izin, dan Secure QR.',
+                'Murid':'Lihat jadwal, nilai, remedial/pengayaan, pengumuman, dan TKA.',
+                'Orang Tua/Wali':'Pantau informasi anak, notifikasi kehadiran, izin, dan tindak lanjut yang dibagikan.',
+                'Tenaga Kependidikan':'Kelola data administrasi sesuai kewenangan dan dukung layanan sekolah.'
+            };
+            const slides=[
+                {
+                    icon:'fa-compass',
+                    title:'Selamat datang di SIMAK SMANTANG',
+                    text:`Akun Anda terdeteksi sebagai ${role}. ${roleGuide[role]||'Gunakan menu sesuai kewenangan akun.'}`
+                },
+                {
+                    icon:'fa-bars',
+                    title:'Navigasi lebih mudah',
+                    text:'Gunakan kelompok menu di sidebar. Di HP tersedia navigasi bawah untuk Beranda, Jadwal, Notifikasi, dan Menu.'
+                },
+                {
+                    icon:'fa-satellite-dish',
+                    title:'Realtime, WIB, dan PWA',
+                    text:'Data Production tersinkron antarpengguna, tanggal operasional memakai WIB, dan SIMAK dapat dipasang seperti aplikasi pada perangkat yang mendukung.'
+                }
+            ];
+            const s=slides[step];
+            return <div className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm flex items-end md:items-center justify-center p-0 md:p-4">
+                <div className="bg-white w-full md:max-w-lg rounded-t-3xl md:rounded-3xl shadow-2xl overflow-hidden">
+                    <div className="bg-gradient-to-r from-brand-navy to-brand-sea p-5 text-white">
+                        <div className="flex items-center justify-between">
+                            <div><p className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">USER ONBOARDING • v61</p><h3 className="font-bold text-lg mt-1">Panduan Cepat SIMAK</h3></div>
+                            <button onClick={onClose} className="simak-touch w-10 h-10 rounded-full bg-white/10 hover:bg-white/20"><i className="fas fa-times"></i></button>
+                        </div>
+                    </div>
+                    <div className="p-6">
+                        <div className="w-14 h-14 rounded-2xl bg-blue-50 text-brand-navy flex items-center justify-center text-2xl"><i className={`fas ${s.icon}`}></i></div>
+                        <h4 className="text-xl font-bold text-brand-navy mt-4">{s.title}</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed mt-2">{s.text}</p>
+
+                        {step===2&&<div className="mt-4 space-y-2">
+                            <div className="p-3 rounded-xl bg-green-50 border border-green-100 text-xs text-green-800"><i className="fas fa-circle-check mr-2"></i>Realtime: data dapat berubah tanpa refresh manual.</div>
+                            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100 text-xs text-blue-800"><i className="fas fa-clock mr-2"></i>Zona waktu operasional: Asia/Jakarta (WIB).</div>
+                            {installAvailable&&!isStandalone&&<button onClick={onInstall} className="w-full mt-2 py-3 bg-brand-navy text-white rounded-xl text-sm font-bold"><i className="fas fa-download mr-2"></i>Pasang SIMAK sebagai Aplikasi</button>}
+                            {!installAvailable&&!isStandalone&&<div className="p-3 rounded-xl bg-amber-50 border border-amber-100 text-xs text-amber-800">Jika tombol install belum tersedia, gunakan menu browser <b>Install app / Tambahkan ke layar utama</b>.</div>}
+                            {isStandalone&&<div className="p-3 rounded-xl bg-green-50 border border-green-100 text-xs text-green-800"><i className="fas fa-mobile-screen mr-2"></i>SIMAK sudah berjalan sebagai aplikasi PWA.</div>}
+                        </div>}
+
+                        <div className="flex items-center justify-center gap-2 mt-6">
+                            {slides.map((_,i)=><span key={i} className={`h-2 rounded-full transition-all ${i===step?'w-7 bg-brand-sea':'w-2 bg-gray-200'}`}></span>)}
+                        </div>
+                        <div className="flex gap-2 mt-5">
+                            {step>0&&<button onClick={()=>setStep(step-1)} className="flex-1 py-3 border rounded-xl text-sm font-bold text-gray-600">Kembali</button>}
+                            <button onClick={()=>step<slides.length-1?setStep(step+1):onClose()} className="flex-1 py-3 bg-brand-sea text-white rounded-xl text-sm font-bold">{step<slides.length-1?'Lanjut':'Selesai'}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>;
+        };
+
         const Layout = ({ children }) => {
             const { user, setUser, view, setView, activePeriod, realtimeStatus, logout } = useContext(AppContext);
             const [isSidebarOpen, setIsSidebarOpen] = useState(false);
             const [menuSearch, setMenuSearch] = useState('');
             const [compactMenu,setCompactMenu] = useState(false);
+            const [deferredInstallPrompt,setDeferredInstallPrompt]=useState(null);
+            const [isStandalone,setIsStandalone]=useState(
+                window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator.standalone===true
+            );
+            const onboardingKey=`simak_onboarding_v61_${normalizeAccessRole(user)||'user'}`;
+            const [showOnboarding,setShowOnboarding]=useState(()=>localStorage.getItem(onboardingKey)!=='done');
+
+            useEffect(()=>{
+                const beforeInstall=(e)=>{
+                    e.preventDefault();
+                    setDeferredInstallPrompt(e);
+                };
+                const installed=()=>{
+                    setDeferredInstallPrompt(null);
+                    setIsStandalone(true);
+                };
+                window.addEventListener('beforeinstallprompt',beforeInstall);
+                window.addEventListener('appinstalled',installed);
+                return ()=>{
+                    window.removeEventListener('beforeinstallprompt',beforeInstall);
+                    window.removeEventListener('appinstalled',installed);
+                };
+            },[]);
+
+            useEffect(()=>{
+                setShowOnboarding(localStorage.getItem(onboardingKey)!=='done');
+            },[user?.uid,user?.role]);
+
+            const closeOnboarding=()=>{
+                localStorage.setItem(onboardingKey,'done');
+                setShowOnboarding(false);
+            };
+
+            const reopenOnboarding=()=>{
+                localStorage.removeItem(onboardingKey);
+                setShowOnboarding(true);
+            };
+
+            const installPWA=async()=>{
+                if(!deferredInstallPrompt) return;
+                try{
+                    await deferredInstallPrompt.prompt();
+                    await deferredInstallPrompt.userChoice;
+                }catch(e){}
+                setDeferredInstallPrompt(null);
+            };
+
             const [wibClock,setWibClock]=useState(()=>new Date());
             useEffect(()=>{
                 const timer=setInterval(()=>setWibClock(new Date()),30000);
@@ -11490,6 +11626,7 @@ service firebase.storage {
 
             return (
                 <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row">
+                    {showOnboarding&&<PWAOnboardingModal user={user} onClose={closeOnboarding} onInstall={installPWA} installAvailable={!!deferredInstallPrompt} isStandalone={isStandalone} />}
                     {realtimeToast&&<div className="fixed top-4 right-4 z-[100] bg-brand-navy text-white px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold border border-white/10">
                         <i className="fas fa-cloud-arrow-down mr-2 text-brand-gold"></i>{realtimeToast}
                     </div>}
@@ -11626,11 +11763,19 @@ service firebase.storage {
                             </nav>
                         </div>
 
-                        {/* Footer / Logout */}
-                        <div className="p-4 border-t border-white/10">
+                        {/* Footer / PWA / Onboarding / Logout */}
+                        <div className="p-3 border-t border-white/10 space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={reopenOnboarding} className="simak-touch flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white/80 py-2.5 rounded-xl text-[10px] font-bold">
+                                    <i className="fas fa-circle-question"></i><span>Panduan</span>
+                                </button>
+                                <button disabled={!deferredInstallPrompt||isStandalone} onClick={installPWA} className="pwa-install-only simak-touch flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white/80 py-2.5 rounded-xl text-[10px] font-bold disabled:opacity-40">
+                                    <i className="fas fa-download"></i><span>Pasang App</span>
+                                </button>
+                            </div>
                             <button 
                                 onClick={() => logout ? logout() : setUser(null)}
-                                className="w-full flex items-center justify-center space-x-2 bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white py-2.5 rounded-xl text-xs font-semibold transition"
+                                className="w-full simak-touch flex items-center justify-center space-x-2 bg-red-500/20 hover:bg-red-600 text-red-200 hover:text-white py-2.5 rounded-xl text-xs font-semibold transition"
                             >
                                 <i className="fas fa-sign-out-alt"></i>
                                 <span>Keluar Sistem</span>
@@ -11638,8 +11783,24 @@ service firebase.storage {
                         </div>
                     </aside>
 
+                    {/* Mobile Bottom Navigation v61 */}
+                    <div className="simak-mobile-bottom md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t shadow-[0_-8px_24px_rgba(15,23,42,0.08)] px-2 pt-2">
+                        <div className="grid grid-cols-4 gap-1">
+                            {[
+                                ['dashboard','fa-house','Beranda'],
+                                ['jadwal','fa-calendar-days','Jadwal'],
+                                ['notifikasi','fa-bell','Notifikasi']
+                            ].map(([id,icon,label])=>canAccessView(user,id)?<button key={id} onClick={()=>{setView(id);setIsSidebarOpen(false);}} className={`simak-touch rounded-xl py-1.5 flex flex-col items-center justify-center gap-1 ${view===id?'text-brand-sea bg-teal-50':'text-gray-500'}`}>
+                                <i className={`fas ${icon} text-base`}></i><span className="text-[9px] font-bold">{label}</span>
+                            </button>:<div key={id}></div>)}
+                            <button onClick={()=>setIsSidebarOpen(true)} className="simak-touch rounded-xl py-1.5 flex flex-col items-center justify-center gap-1 text-gray-500">
+                                <i className="fas fa-bars text-base"></i><span className="text-[9px] font-bold">Menu</span>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Main Content Area */}
-                    <main className="flex-1 p-4 md:p-7 overflow-y-auto max-h-screen min-w-0">
+                    <main className="flex-1 p-4 pb-24 md:p-7 overflow-y-auto max-h-screen min-w-0">
                         <div className="hidden md:flex items-center justify-between mb-5">
                             <div className="flex items-center gap-2 text-xs text-gray-400">
                                 <i className="fas fa-house"></i>
@@ -11652,7 +11813,7 @@ service firebase.storage {
                                             ? (studentNavItems.find(i=>i.id===view)?.label || 'Beranda')
                                             : (staffNavItems.find(i=>i.id===view)?.label || 'Dashboard'))}
                                 </span>
-                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v60</span>
+                                <span className="text-[9px] px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-bold border border-blue-100">NAV v61</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="text-right hidden lg:block">
@@ -11668,7 +11829,7 @@ service firebase.storage {
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
                                 <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v60</span>
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v61</span>
                                 <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
                                 <span className="hidden md:inline text-gray-400">• WIB</span>
                             </div>
@@ -12136,7 +12297,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','60');
+                    localStorage.setItem('simak_schema_version','61');
                 }catch(e){}
             },[rawData]);
 
@@ -12174,7 +12335,7 @@ service firebase.storage {
             }
 
             if(authLoading){
-                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v60</p></div></div>;
+                return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="text-center"><i className="fas fa-circle-notch fa-spin text-3xl text-brand-sea"></i><p className="mt-3 text-sm font-semibold text-brand-navy">Memeriksa sesi Firebase...</p><p className="text-xs text-gray-400 mt-1">SIMAK SMANTANG v61</p></div></div>;
             }
 
             if(!user){
@@ -12240,6 +12401,16 @@ service firebase.storage {
         window.__SIMAK_BOOT_OK__ = true;
         const bootFallback=document.getElementById('boot-fallback');
         if(bootFallback) bootFallback.style.display='none';
+    </script>
+
+    <script>
+        if('serviceWorker' in navigator){
+            window.addEventListener('load',()=>{
+                navigator.serviceWorker.register('/service-worker.js',{scope:'/'})
+                    .then(reg=>console.log('SIMAK PWA service worker aktif',reg.scope))
+                    .catch(err=>console.warn('SIMAK PWA service worker gagal',err));
+            });
+        }
     </script>
 </body>
 </html>
