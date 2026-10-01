@@ -59,6 +59,15 @@ service cloud.firestore {
     }
 
 
+
+    match /accountAdminRequests/{id} {
+      allow read: if isManagement();
+      allow create: if isManagement()
+        && request.resource.data.type == 'RESET_PASSWORD'
+        && request.resource.data.status == 'Pending';
+      allow update, delete: if isManagement();
+    }
+
     match /qrAssignments/{personKey} {
       allow read: if isManagement();
       allow create, update, delete: if isManagement();

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v55 - QR Security Hardening & Secure Check-In/Check-Out</title>
+    <title>SIMAK SMANTANG v56 - Manajemen Akun & Reset Password Production</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -1732,7 +1732,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v55 • Secure QR Token • Hardened Check-In/Out • Firebase Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v56 • Account Management • Password Recovery • Firebase Production</span>
                         </div>
                     </div>
                 </div>
@@ -2206,6 +2206,7 @@ service firebase.storage {
                             ['fa-cloud-arrow-up','Migrasi v51','firebase51'],
                             ['fa-rocket','Go-Live v52','golive52'],
                             ['fa-chart-line','Monitoring v54','monitoring54'],
+                            ['fa-user-lock','Akun v56','account56'],
                             ['fa-shield-halved','QR Security v55','qrsecurity55'],
                         ].map(([icon,label,view])=><button key={view} onClick={()=>setView(view)} className="p-3 border rounded-xl text-xs font-semibold hover:bg-blue-50 hover:border-brand-sea"><i className={`fas ${icon} block text-lg text-brand-sea mb-2`}></i>{label}</button>)}
                     </div>
@@ -5779,7 +5780,7 @@ service firebase.storage {
                 tka:'TKA & Bank Soal', kelas:'Data Kelas', murid:'Data Murid', guruwali:'Dashboard Guru Wali', earlywarning:'Early Warning Murid', kegiatan:'Kegiatan',
                 perangkat:'Perangkat Ajar', periode:'Tahun Ajaran/Semester', bebanmengajar:'Beban Mengajar',
                 supervisi:'Supervisi Akademik', rapor:'Rapor Pendidikan/PBD', arsip:'Arsip Kurikulum', pegawai:'Data Pegawai',
-                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', qrsecurity55:'Manajemen Token QR v55'
+                laporan:'Pusat Laporan', backup:'Backup & Restore', auditakses:'Audit Akun & Hak Akses', auditv49:'Audit & Hardening', firebase:'Firebase Production', firebase51:'Migrasi Data & Akun Firebase', golive52:'Uji Produksi & Go-Live', monitoring54:'Audit & Monitoring Produksi', account56:'Manajemen Akun & Password', qrsecurity55:'Manajemen Token QR v55'
             };
 
             const sensitiveViews = ['nilai','perangkat','periode','supervisi','rapor','pegawai','backup','auditakses'];
@@ -8576,6 +8577,197 @@ service firebase.storage {
             </div>;
         };
 
+
+        const AccountManagementView = () => {
+            const { user } = useContext(AppContext);
+            const [accounts,setAccounts]=useState([]);
+            const [requests,setRequests]=useState([]);
+            const [loading,setLoading]=useState(false);
+            const [query,setQuery]=useState('');
+            const [roleFilter,setRoleFilter]=useState('Semua');
+            const [statusFilter,setStatusFilter]=useState('Semua');
+            const [loginFilter,setLoginFilter]=useState('Semua');
+            const [selected,setSelected]=useState(new Set());
+            const [message,setMessage]=useState(null);
+            const canManage=['Kepala Sekolah','Wakil Kurikulum'].includes(normalizeAccessRole(user));
+
+            const loadAccounts=async()=>{
+                if(!firestoreInstance) return;
+                setLoading(true);
+                try{
+                    const userSnap=await firestoreInstance.collection('users').get();
+                    let reqDocs=[];
+                    try{
+                        const reqSnap=await firestoreInstance.collection('accountAdminRequests').orderBy('createdAt','desc').limit(200).get();
+                        reqDocs=reqSnap.docs;
+                    }catch(e){reqDocs=[];}
+                    setAccounts(userSnap.docs.map(d=>({uid:d.id,...d.data()})));
+                    setRequests(reqDocs.map(d=>({id:d.id,...d.data()})));
+                }catch(e){
+                    setMessage({type:'error',text:`Gagal memuat akun: ${e.code||''} ${e.message||e}`});
+                }finally{setLoading(false);}
+            };
+            useEffect(()=>{loadAccounts();},[]);
+
+            const roles=['Semua',...Array.from(new Set(accounts.map(a=>a.role).filter(Boolean))).sort()];
+            const q=query.trim().toLowerCase();
+            const filtered=accounts.filter(a=>{
+                const active=a.active!==false;
+                if(roleFilter!=='Semua'&&a.role!==roleFilter) return false;
+                if(statusFilter==='Aktif'&&!active) return false;
+                if(statusFilter==='Nonaktif'&&active) return false;
+                if(loginFilter==='Sudah Login'&&!a.lastLoginAt) return false;
+                if(loginFilter==='Belum Pernah Login'&&a.lastLoginAt) return false;
+                if(!q) return true;
+                return [a.name,a.email,a.nisn,a.nip,a.localId,a.role,a.className].some(v=>String(v||'').toLowerCase().includes(q));
+            });
+
+            const isDeliverableEmail=(email)=>{
+                const e=String(email||'').trim().toLowerCase();
+                return e.includes('@') && !e.endsWith('.invalid') && !e.endsWith('@murid.simak-smantang.invalid');
+            };
+            const stats={
+                total:accounts.length,
+                active:accounts.filter(a=>a.active!==false).length,
+                never:accounts.filter(a=>!a.lastLoginAt).length,
+                studentAlias:accounts.filter(a=>String(a.email||'').endsWith('@murid.simak-smantang.invalid')).length,
+                pending:requests.filter(r=>r.status==='Pending').length
+            };
+
+            const sendResetEmail=async(a)=>{
+                if(!canManage) return;
+                if(!isDeliverableEmail(a.email)) return setMessage({type:'warning',text:'Email akun ini tidak dapat menerima tautan reset. Gunakan Permintaan Reset Admin.'});
+                if(!confirm(`Kirim tautan reset password ke ${a.email}?`)) return;
+                setLoading(true);
+                try{
+                    await authInstance.sendPasswordResetEmail(a.email);
+                    await writeAuditLog({action:'PASSWORD_RESET_EMAIL',module:'Manajemen Akun',collection:'users',documentId:a.uid,detail:`Reset email dikirim ke ${a.email}`});
+                    setMessage({type:'success',text:`Tautan reset password dikirim ke ${a.email}.`});
+                }catch(e){setMessage({type:'error',text:`Reset email gagal: ${e.code||''} ${e.message||e}`});}
+                finally{setLoading(false);}
+            };
+
+            const createResetRequest=async(a)=>{
+                if(!canManage) return;
+                if(!confirm(`Buat permintaan reset password admin untuk ${a.name}?`)) return;
+                setLoading(true);
+                try{
+                    const dup=await firestoreInstance.collection('accountAdminRequests').where('targetUid','==',a.uid).where('status','==','Pending').limit(1).get();
+                    if(!dup.empty){setMessage({type:'warning',text:'Permintaan reset untuk akun ini masih Pending.'});return;}
+                    await firestoreInstance.collection('accountAdminRequests').add({
+                        type:'RESET_PASSWORD',targetUid:a.uid,targetName:a.name||'',targetEmail:a.email||'',targetRole:a.role||'',targetLocalId:a.localId||'',
+                        requestedBy:authInstance?.currentUser?.uid||'',requestedByName:user?.name||'',status:'Pending',
+                        createdAt:firebase.firestore.FieldValue.serverTimestamp(),completedAt:null,processedBy:'',
+                        note:'Password baru hanya dibuat oleh Firebase Admin SDK dan tidak disimpan di Firestore.'
+                    });
+                    await writeAuditLog({action:'PASSWORD_RESET_REQUEST',module:'Manajemen Akun',collection:'accountAdminRequests',documentId:a.uid,detail:`Permintaan reset dibuat untuk ${a.name}`});
+                    setMessage({type:'success',text:`Permintaan reset admin untuk ${a.name} dibuat.`});
+                    await loadAccounts();
+                }catch(e){setMessage({type:'error',text:`Gagal membuat permintaan: ${e.code||''} ${e.message||e}`});}
+                finally{setLoading(false);}
+            };
+
+            const setAccess=async(a,active)=>{
+                if(!canManage) return;
+                if(a.uid===authInstance?.currentUser?.uid&&!active) return setMessage({type:'warning',text:'Akun yang sedang digunakan tidak dapat dinonaktifkan.'});
+                if(!confirm(`${active?'Aktifkan':'Nonaktifkan'} akses SIMAK untuk ${a.name}?`)) return;
+                setLoading(true);
+                try{
+                    await firestoreInstance.collection('users').doc(a.uid).set({active,accessUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),accessUpdatedBy:authInstance?.currentUser?.uid||''},{merge:true});
+                    await writeAuditLog({action:active?'ACCOUNT_ACCESS_ENABLED':'ACCOUNT_ACCESS_DISABLED',module:'Manajemen Akun',collection:'users',documentId:a.uid,detail:`Akses SIMAK ${active?'diaktifkan':'dinonaktifkan'} untuk ${a.name}`,severity:active?'info':'warning'});
+                    setMessage({type:'success',text:`Akses ${a.name} ${active?'diaktifkan':'dinonaktifkan'}.`});
+                    await loadAccounts();
+                }catch(e){setMessage({type:'error',text:`Perubahan akses gagal: ${e.code||''} ${e.message||e}`});}
+                finally{setLoading(false);}
+            };
+
+            const bulkAccess=async(active)=>{
+                if(!canManage||!selected.size) return;
+                const targets=accounts.filter(a=>selected.has(a.uid)&&a.uid!==authInstance?.currentUser?.uid);
+                if(!targets.length||!confirm(`${active?'Aktifkan':'Nonaktifkan'} ${targets.length} akun terpilih?`)) return;
+                setLoading(true);
+                try{
+                    for(let i=0;i<targets.length;i+=400){
+                        const batch=firestoreInstance.batch();
+                        targets.slice(i,i+400).forEach(a=>batch.set(firestoreInstance.collection('users').doc(a.uid),{active,accessUpdatedAt:firebase.firestore.FieldValue.serverTimestamp(),accessUpdatedBy:authInstance?.currentUser?.uid||''},{merge:true}));
+                        await batch.commit();
+                    }
+                    await writeAuditLog({action:active?'BULK_ACCOUNT_ENABLE':'BULK_ACCOUNT_DISABLE',module:'Manajemen Akun',collection:'users',documentId:'*',detail:`${targets.length} akun diperbarui`});
+                    setSelected(new Set());setMessage({type:'success',text:`${targets.length} akun berhasil diperbarui.`});await loadAccounts();
+                }catch(e){setMessage({type:'error',text:`Bulk update gagal: ${e.code||''} ${e.message||e}`});}
+                finally{setLoading(false);}
+            };
+
+            const exportAccounts=()=>{
+                const fields=['uid','name','email','role','localId','nisn','nip','className','active','lastLoginAt','lastSeenAt','loginCount'];
+                const esc=v=>`"${String(v??'').replaceAll('"','""')}"`;
+                const lines=[fields.join(',')];
+                filtered.forEach(a=>{const row={...a,lastLoginAt:formatMonitorDate(a.lastLoginAt),lastSeenAt:formatMonitorDate(a.lastSeenAt)};lines.push(fields.map(f=>esc(row[f])).join(','));});
+                downloadTextFile('\uFEFF'+lines.join('\n'),`SIMAK_AKUN_PRODUCTION_${new Date().toISOString().slice(0,10)}.csv`,'text/csv;charset=utf-8');
+                writeAuditLog({action:'EXPORT',module:'Manajemen Akun',collection:'users',documentId:'*',detail:`Ekspor ${filtered.length} akun`});
+            };
+            const toggleSelect=(uid)=>setSelected(prev=>{const n=new Set(prev);n.has(uid)?n.delete(uid):n.add(uid);return n;});
+            const msgClass=message?.type==='success'?'bg-green-50 border-green-200 text-green-800':message?.type==='error'?'bg-red-50 border-red-200 text-red-800':'bg-amber-50 border-amber-200 text-amber-800';
+
+            return <div className="space-y-6 animate-fade-in">
+                <div className="bg-gradient-to-r from-brand-navy via-blue-900 to-brand-sea rounded-2xl p-6 text-white shadow-lg">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-brand-gold">ACCOUNT SECURITY • v56</p>
+                    <h2 className="text-2xl md:text-3xl font-bold mt-2">Manajemen Akun & Reset Password Production</h2>
+                    <p className="text-sm text-white/75 mt-1">Firebase Authentication • Akses SIMAK • Password Recovery • Audit</p>
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <StatCard title="Total Akun" value={stats.total} icon="fa-users" colorClass="bg-brand-navy" subtitle="users/{uid}" />
+                    <StatCard title="Akses Aktif" value={stats.active} icon="fa-user-check" colorClass="bg-green-600" subtitle="active ≠ false" />
+                    <StatCard title="Belum Login" value={stats.never} icon="fa-user-clock" colorClass="bg-amber-500" subtitle="tracking v54+" />
+                    <StatCard title="Akun NISN" value={stats.studentAlias} icon="fa-graduation-cap" colorClass="bg-brand-sea" subtitle="reset via Admin SDK" />
+                    <StatCard title="Reset Pending" value={stats.pending} icon="fa-key" colorClass={stats.pending?'bg-red-500':'bg-gray-500'} subtitle="accountAdminRequests" />
+                </div>
+
+                <Card title="Filter & Tindakan Akun">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                        <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Cari nama, email, NISN, NIP..." className="border rounded-lg p-2.5 text-sm"/>
+                        <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} className="border rounded-lg p-2.5 text-sm">{roles.map(r=><option key={r}>{r}</option>)}</select>
+                        <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} className="border rounded-lg p-2.5 text-sm"><option>Semua</option><option>Aktif</option><option>Nonaktif</option></select>
+                        <select value={loginFilter} onChange={e=>setLoginFilter(e.target.value)} className="border rounded-lg p-2.5 text-sm"><option>Semua</option><option>Sudah Login</option><option>Belum Pernah Login</option></select>
+                    </div>
+                    <div className="flex flex-wrap gap-2 mt-4">
+                        <button disabled={loading} onClick={loadAccounts} className="px-4 py-2 bg-brand-navy text-white rounded-lg text-xs font-bold">Refresh</button>
+                        <button onClick={()=>setSelected(new Set(filtered.map(a=>a.uid)))} className="px-4 py-2 border rounded-lg text-xs font-bold">Pilih Hasil Filter</button>
+                        <button onClick={()=>setSelected(new Set())} className="px-4 py-2 border rounded-lg text-xs font-bold">Kosongkan</button>
+                        <button disabled={!selected.size||loading} onClick={()=>bulkAccess(true)} className="px-4 py-2 border border-green-300 text-green-700 rounded-lg text-xs font-bold disabled:opacity-40">Aktifkan Terpilih</button>
+                        <button disabled={!selected.size||loading} onClick={()=>bulkAccess(false)} className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-xs font-bold disabled:opacity-40">Nonaktifkan Terpilih</button>
+                        <button onClick={exportAccounts} className="px-4 py-2 border border-brand-sea text-brand-sea rounded-lg text-xs font-bold">Ekspor CSV</button>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-3">{selected.size} akun dipilih • {filtered.length} akun pada hasil filter</p>
+                </Card>
+
+                {message&&<div className={`border rounded-xl p-4 text-sm ${msgClass}`}>{message.text}</div>}
+
+                <Card title={`Daftar Akun Production (${filtered.length})`}>
+                    <div className="overflow-x-auto max-h-[650px]">
+                        <table className="w-full text-xs min-w-[1180px]">
+                            <thead className="sticky top-0 bg-gray-50 z-10"><tr><th className="px-3 py-3"></th><th className="px-3 py-3 text-left">Nama / Identitas</th><th className="px-3 py-3 text-left">Role</th><th className="px-3 py-3">Akses</th><th className="px-3 py-3 text-left">Login Terakhir</th><th className="px-3 py-3">Login</th><th className="px-3 py-3">Recovery</th><th className="px-3 py-3">Akses SIMAK</th></tr></thead>
+                            <tbody>{filtered.map(a=>{const active=a.active!==false;const deliverable=isDeliverableEmail(a.email);return <tr key={a.uid} className="border-b hover:bg-gray-50">
+                                <td className="px-3 py-3 text-center"><input type="checkbox" checked={selected.has(a.uid)} onChange={()=>toggleSelect(a.uid)}/></td>
+                                <td className="px-3 py-3"><p className="font-bold">{a.name||'-'}</p><p className="text-[10px] text-gray-500 mt-1">{a.email||'-'}</p><p className="text-[10px] text-gray-400">{a.nisn?`NISN ${a.nisn}`:a.nip?`NIP ${a.nip}`:a.localId||''}</p></td>
+                                <td className="px-3 py-3">{a.role||'-'}{a.className&&<div className="text-[10px] text-gray-400">{a.className}</div>}</td>
+                                <td className="px-3 py-3 text-center">{active?<span className="px-2 py-1 rounded-full bg-green-100 text-green-700 font-bold">AKTIF</span>:<span className="px-2 py-1 rounded-full bg-red-100 text-red-600 font-bold">NONAKTIF</span>}</td>
+                                <td className="px-3 py-3">{formatMonitorDate(a.lastLoginAt)}</td><td className="px-3 py-3 text-center font-bold">{a.loginCount||0}</td>
+                                <td className="px-3 py-3 text-center">{deliverable?<button disabled={loading} onClick={()=>sendResetEmail(a)} className="px-2.5 py-1.5 bg-brand-sea text-white rounded text-[10px] font-bold">Kirim Reset Email</button>:<button disabled={loading} onClick={()=>createResetRequest(a)} className="px-2.5 py-1.5 bg-amber-500 text-white rounded text-[10px] font-bold">Permintaan Reset Admin</button>}</td>
+                                <td className="px-3 py-3 text-center"><button disabled={loading||a.uid===authInstance?.currentUser?.uid} onClick={()=>setAccess(a,!active)} className={`px-2.5 py-1.5 rounded text-[10px] font-bold ${active?'border border-red-200 text-red-600':'border border-green-200 text-green-700'} disabled:opacity-30`}>{active?'Nonaktifkan':'Aktifkan'}</button></td>
+                            </tr>})}</tbody>
+                        </table>
+                    </div>
+                </Card>
+
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <Card title={`Permintaan Reset Admin (${requests.length})`}><div className="space-y-2 max-h-[420px] overflow-auto">{requests.length?requests.map(r=><div key={r.id} className="border rounded-xl p-3"><div className="flex justify-between gap-3"><div><p className="font-bold text-sm">{r.targetName||'-'}</p><p className="text-[10px] text-gray-500">{r.targetEmail||''} • {r.targetRole||''}</p></div><span className={`px-2 py-1 rounded-full text-[10px] font-bold h-fit ${r.status==='Pending'?'bg-amber-100 text-amber-700':r.status==='Completed'?'bg-green-100 text-green-700':'bg-gray-100 text-gray-600'}`}>{r.status||'-'}</span></div><p className="text-[10px] text-gray-400 mt-2">Dibuat: {formatMonitorDate(r.createdAt)}</p></div>):<p className="text-sm text-gray-400">Belum ada permintaan reset admin.</p>}</div></Card>
+                    <Card title="Kebijakan Keamanan v56"><div className="space-y-3 text-xs text-gray-600 leading-relaxed"><p><b>Reset email</b> menggunakan mekanisme resmi Firebase Authentication.</p><p><b>Akun murid/NISN</b> memakai alias `.invalid`, sehingga reset dilakukan dengan Firebase Admin SDK.</p><p><b>Nonaktifkan Akses SIMAK</b> mengubah `active=false`; akun Auth tidak dihapus.</p><p><b>Password baru tidak disimpan di Firestore.</b> Hanya file lokal administrator yang memuat password sementara.</p></div></Card>
+                </div>
+            </div>;
+        };
+
         const ProductionMonitoringView = () => {
             const { user, activePeriod, cloudStatus } = useContext(AppContext);
             const [loading,setLoading]=useState(false);
@@ -10262,12 +10454,12 @@ service firebase.storage {
             'Kepala Sekolah': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56'
             ],
             'Wakil Kurikulum': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','absensipegawai','scanqrpegawai','monitoringmengajar','jurnalpiket','rekapabsensi','rekapqr','kartuid','checkio','qrsecurity55','izin',
                 'nilai','remedial','tka','kelas','murid','guruwali','earlywarning','kegiatan','perangkat','periode','pengaturan','bebanmengajar','supervisi','rapor',
-                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54'
+                'arsip','pegawai','laporan','laporanbulanan','backup','auditakses','auditv49','firebase','firebase51','golive52','monitoring54','account56'
             ],
             'Guru': [
                 'dashboard','pengumuman','notifikasi','jadwal','absensi','scanqr','rekapabsensi','rekapqr','kartuid','checkio','izin','nilai','remedial','tka','kelas','murid',
@@ -10362,6 +10554,7 @@ service firebase.storage {
                 { id: 'firebase51', label: 'Migrasi Data & Akun', icon: 'fa-cloud-arrow-up' },
                 { id: 'golive52', label: 'Uji Produksi & Go-Live', icon: 'fa-rocket' },
                 { id: 'monitoring54', label: 'Audit & Monitoring Produksi', icon: 'fa-chart-line' },
+                { id: 'account56', label: 'Manajemen Akun & Password', icon: 'fa-user-lock' },
                 { id: 'bebanmengajar', label: 'Beban Mengajar', icon: 'fa-chart-gantt' },
                 { id: 'supervisi', label: 'Supervisi Akademik', icon: 'fa-clipboard-check' },
                 { id: 'rapor', label: 'Rapor Pendidikan & PBD', icon: 'fa-chart-pie' },
@@ -10392,7 +10585,7 @@ service firebase.storage {
                 },
                 {
                     id:'administrasi', label:'Administrasi & Laporan', icon:'fa-folder-tree',
-                    items:['pegawai','laporan','backup','auditakses']
+                    items:['pegawai','laporan','backup','auditakses','account56','monitoring54']
                 }
             ];
 
@@ -10827,7 +11020,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','55');
+                    localStorage.setItem('simak_schema_version','56');
                 }catch(e){}
             },[rawData]);
 
@@ -10902,6 +11095,7 @@ service firebase.storage {
                     case 'firebase51': return <FirebaseMigrationView />;
                     case 'golive52': return <ProductionGoLiveView />;
                     case 'monitoring54': return <ProductionMonitoringView />;
+                    case 'account56': return <AccountManagementView />;
                     case 'supervisi': return <SupervisiView />;
                     case 'rapor': return <RaporPendidikanView />;
                     default: return <PlaceholderView title="Modul SIMAK" icon="fa-tools" />;

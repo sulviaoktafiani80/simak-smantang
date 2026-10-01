@@ -1,0 +1,14 @@
+SIMAK SMANTANG v56 — ACCOUNT MANAGEMENT CHECKLIST
+
+[ ] index.html v56 terdeploy
+[ ] firestore.rules v56 dipublish
+[ ] Menu Manajemen Akun & Password tampil untuk Kepala Sekolah/Wakil Kurikulum
+[ ] Total akun terbaca 166
+[ ] Filter role/status/login bekerja
+[ ] Reset email akun pegawai diuji
+[ ] Permintaan Reset Admin murid dapat dibuat
+[ ] process-password-resets.mjs berhasil memproses akun uji
+[ ] Password sementara murid berhasil digunakan
+[ ] Akses SIMAK akun uji dapat dinonaktifkan dan diaktifkan kembali
+[ ] Audit tindakan akun tercatat
+[ ] Ekspor CSV akun berhasil

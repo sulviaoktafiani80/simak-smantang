@@ -6,3 +6,4 @@ output/
 .env.*
 temporary-credentials.csv
 provisioning-results.csv
+password-reset-results-*.csv

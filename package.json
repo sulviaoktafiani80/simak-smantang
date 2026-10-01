@@ -1,0 +1,12 @@
+{
+  "name": "simak-smantang-v56-account-admin",
+  "version": "56.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "process-resets": "node process-password-resets.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.4.0"
+  }
+}
