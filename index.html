@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SIMAK SMANTANG v57.3 - Realtime Fallback & Account Data Recovery Fix</title>
+    <title>SIMAK SMANTANG v57.4 - Persistent Firebase Production Bootstrap</title>
     
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -125,12 +125,29 @@
         // Firebase Production Foundation v50
         // Firebase web config is not a server secret. Security depends on Authentication + Security Rules.
         const defaultFirebaseConfig = {
-            apiKey: "",
-            authDomain: "",
-            projectId: "",
-            storageBucket: "",
-            messagingSenderId: "",
-            appId: ""
+            apiKey: "AIzaSyC4-iUYmVazwP1HUIN_NYb_TI0SUkyZiBo",
+            authDomain: "simak-sman1mantang.firebaseapp.com",
+            projectId: "simak-sman1mantang",
+            storageBucket: "simak-sman1mantang.firebasestorage.app",
+            messagingSenderId: "734096692505",
+            appId: "1:734096692505:web:034d8b1a08e7dca7d86188"
+        };
+
+        const isProductionHostname = () => {
+            try {
+                const host=String(window.location.hostname||'').toLowerCase();
+                return host==='simak-sman1mantang.vercel.app' || host.endsWith('.vercel.app');
+            } catch(e) { return false; }
+        };
+
+        const mergeFirebaseConfig = (saved={}) => {
+            const merged={...defaultFirebaseConfig};
+            Object.keys(defaultFirebaseConfig).forEach(key=>{
+                const value=String(saved?.[key]??'').trim();
+                // Nilai kosong dari localStorage tidak boleh menimpa default Production.
+                if(value) merged[key]=value;
+            });
+            return merged;
         };
 
         const FIREBASE_COLLECTIONS = {
@@ -165,7 +182,7 @@
         const getSavedFirebaseConfig = () => {
             try {
                 const saved = localStorage.getItem('simak_firebase_config');
-                return saved ? {...defaultFirebaseConfig,...JSON.parse(saved)} : {...defaultFirebaseConfig};
+                return saved ? mergeFirebaseConfig(JSON.parse(saved)) : {...defaultFirebaseConfig};
             } catch (e) {
                 return {...defaultFirebaseConfig};
             }
@@ -177,32 +194,112 @@
                 .every(k=>String(config[k]||'').trim().length>0);
         };
 
-        const getFirebaseMode = () => localStorage.getItem('simak_firebase_mode') || 'prototype';
+        const getFirebaseMode = () => isProductionHostname()
+            ? 'production'
+            : (localStorage.getItem('simak_firebase_mode') || 'production');
 
         let firebaseApp = null;
         let authInstance = null;
         let firestoreInstance = null;
         let storageInstance = null;
         let firebaseInitError = '';
+        let firebaseBootstrapPromise = null;
+        let firebaseBootstrapAttempt = 0;
+        let firebaseBootstrapReadyAt = null;
+
+        const sleep = (ms) => new Promise(resolve=>setTimeout(resolve,ms));
 
         const initFirebase = (config) => {
             firebaseInitError = '';
-            if(!isFirebaseConfigReady(config)) return false;
+            if(!isFirebaseConfigReady(config)) {
+                firebaseInitError='Firebase config belum lengkap.';
+                return false;
+            }
             try {
                 if (!window.firebase) throw new Error('Firebase SDK belum termuat.');
                 if (window.firebase.apps.length > 0) {
                     firebaseApp = window.firebase.app();
+                    const currentProject=String(firebaseApp?.options?.projectId||'');
+                    if(currentProject && currentProject!==config.projectId){
+                        throw new Error(`Firebase app aktif memakai project ${currentProject}, bukan ${config.projectId}. Muat ulang halaman.`);
+                    }
                 } else {
                     firebaseApp = window.firebase.initializeApp(config);
                 }
                 authInstance = window.firebase.auth();
                 firestoreInstance = window.firebase.firestore();
-                storageInstance = window.firebase.storage();
-                return true;
+                try { storageInstance = window.firebase.storage(); } catch(storageErr) { storageInstance=null; }
+                return !!(firebaseApp&&authInstance&&firestoreInstance);
             } catch (e) {
                 firebaseInitError = String(e?.message || e || 'Firebase initialization failed');
                 console.warn("Firebase Init Error:", e);
                 return false;
+            }
+        };
+
+        const ensureFirebaseReady = async ({maxAttempts=20,force=false}={}) => {
+            if(authInstance && firestoreInstance && !force) return {
+                ok:true, auth:authInstance, firestore:firestoreInstance, app:firebaseApp
+            };
+            if(firebaseBootstrapPromise && !force) return firebaseBootstrapPromise;
+
+            firebaseBootstrapPromise=(async()=>{
+                const config=getSavedFirebaseConfig();
+                if(!isFirebaseConfigReady(config)){
+                    throw new Error('Konfigurasi Firebase Production tidak lengkap.');
+                }
+
+                let delay=250;
+                let lastError='';
+                for(let attempt=1; attempt<=maxAttempts; attempt++){
+                    firebaseBootstrapAttempt=attempt;
+                    try{
+                        if(!window.firebase){
+                            throw new Error('Firebase SDK CDN belum tersedia.');
+                        }
+
+                        const ok=initFirebase(config);
+                        if(!ok) throw new Error(firebaseInitError||'Firebase gagal diinisialisasi.');
+
+                        // Firebase Auth menyimpan session antar-refresh/perangkat browser yang sama.
+                        try{
+                            await authInstance.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL);
+                        }catch(persistenceErr){
+                            console.warn('Auth persistence warning',persistenceErr);
+                        }
+
+                        // Probe ringan memastikan Firestore benar-benar dapat dipanggil.
+                        if(!firestoreInstance) throw new Error('Firestore instance belum tersedia.');
+
+                        firebaseBootstrapReadyAt=new Date().toISOString();
+                        firebaseInitError='';
+                        if(isProductionHostname()){
+                            localStorage.setItem('simak_firebase_mode','production');
+                            localStorage.setItem('simak_go_live_mode','production');
+                            localStorage.setItem('simak_firebase_config',JSON.stringify(config));
+                        }
+                        window.dispatchEvent(new CustomEvent('simak-firebase-ready',{detail:{
+                            projectId:config.projectId,
+                            attempt,
+                            at:firebaseBootstrapReadyAt
+                        }}));
+                        return {ok:true,auth:authInstance,firestore:firestoreInstance,app:firebaseApp,attempt};
+                    }catch(err){
+                        lastError=String(err?.message||err);
+                        firebaseInitError=lastError;
+                        if(attempt<maxAttempts){
+                            await sleep(delay);
+                            delay=Math.min(Math.round(delay*1.5),2000);
+                        }
+                    }
+                }
+                throw new Error(`Firebase bootstrap gagal setelah ${maxAttempts} percobaan: ${lastError}`);
+            })();
+
+            try{
+                return await firebaseBootstrapPromise;
+            }finally{
+                if(!(authInstance&&firestoreInstance)) firebaseBootstrapPromise=null;
             }
         };
 
@@ -213,19 +310,27 @@
             firestoreReady:!!firestoreInstance,
             storageReady:!!storageInstance,
             mode:getFirebaseMode(),
+            projectId:firebaseApp?.options?.projectId||getSavedFirebaseConfig().projectId,
+            bootstrapAttempt:firebaseBootstrapAttempt,
+            bootstrapReadyAt:firebaseBootstrapReadyAt,
             error:firebaseInitError
         });
 
         const saveFirebaseConfig = (config) => {
-            const clean={...defaultFirebaseConfig,...config};
+            const clean=mergeFirebaseConfig(config);
             localStorage.setItem('simak_firebase_config',JSON.stringify(clean));
+            if(isProductionHostname()){
+                localStorage.setItem('simak_firebase_mode','production');
+                localStorage.setItem('simak_go_live_mode','production');
+            }
             return clean;
         };
 
-        // Safe bootstrap: no connection is attempted until a complete config exists.
-        if(isFirebaseConfigReady(getSavedFirebaseConfig())){
-            initFirebase(getSavedFirebaseConfig());
-        }
+        // v57.4: bootstrap otomatis. Tidak lagi bergantung pada membuka menu Firebase Production.
+        ensureFirebaseReady().catch(err=>{
+            firebaseInitError=String(err?.message||err);
+            console.warn('Persistent Firebase Bootstrap:',err);
+        });
 
         // Data murid sesuai DAFTAR HADIR MURID KEGIATAN PERTEMUAN PAGI CERIA (146 murid)
         const attendanceStudentGroups = {
@@ -1643,7 +1748,11 @@ service firebase.storage {
                 const trimmedInput=identityInput.trim().toLowerCase();
                 try{
                     if(productionMode){
-                        if(!authInstance||!firestoreInstance) throw new Error('Firebase belum siap. Pastikan konfigurasi Firebase sudah benar.');
+                        if(!authInstance||!firestoreInstance){
+                            setMessage('Menyiapkan Firebase Production...');
+                            await ensureFirebaseReady();
+                        }
+                        if(!authInstance||!firestoreInstance) throw new Error(`Firebase belum siap: ${firebaseInitError||'inisialisasi gagal'}`);
                         if(!password) throw new Error('Masukkan password Firebase Authentication.');
                         const authIdentity = trimmedInput.includes('@')
                             ? trimmedInput
@@ -1732,7 +1841,7 @@ service firebase.storage {
                             </button>
                         </form>
                         <div className="bg-gray-50 p-4 text-center text-xs text-gray-500 border-t">
-                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v57.3 • Realtime Fallback • Account Recovery • Firebase Production</span>
+                            "Berkarakter, Maju, dan Berbudaya Lingkungan"<br/><span className="text-[10px] text-gray-400">v57.4 • Persistent Firebase Bootstrap • Realtime Production</span>
                         </div>
                     </div>
                 </div>
@@ -7858,7 +7967,9 @@ service firebase.storage {
 
 
 
-        const getGoLiveMode = () => localStorage.getItem('simak_go_live_mode') || 'staging';
+        const getGoLiveMode = () => isProductionHostname()
+            ? 'production'
+            : (localStorage.getItem('simak_go_live_mode') || 'production');
         const setGoLiveMode = (mode) => localStorage.setItem('simak_go_live_mode',mode);
 
         const CLOUD_DATA_KEY_MAP = {
@@ -7936,7 +8047,7 @@ service firebase.storage {
 
 
         // === v57 REALTIME SYNC & MULTI-DEVICE ENGINE ===
-        const REALTIME_ENGINE_VERSION='57.3';
+        const REALTIME_ENGINE_VERSION='57.4';
         const realtimeLocalWriteRegistry = new Map();
 
         const registerRealtimeLocalWrite=(collectionName,docId)=>{
@@ -8386,7 +8497,7 @@ service firebase.storage {
                         <div>
                             <span className="inline-flex px-3 py-1 rounded-full bg-white/90 text-brand-navy text-[10px] font-bold uppercase tracking-widest">Firebase Production Foundation</span>
                             <h2 className="text-2xl md:text-3xl font-bold mt-3">Fondasi Produksi Firebase</h2>
-                            <p className="text-sm text-white/85 mt-1">Authentication • Firestore • Storage • Security Rules • Migration Plan</p>
+                            <p className="text-sm text-white/85 mt-1">Authentication • Firestore • Persistent Bootstrap • Realtime • Security Rules</p>
                         </div>
                         <div className="bg-white/10 border border-white/20 rounded-2xl p-4 min-w-[245px]">
                             <p className="text-[10px] text-white/60 uppercase tracking-wider">Mode Saat Ini</p>
@@ -8751,7 +8862,15 @@ service firebase.storage {
 
             const loadAccounts=async({silent=false}={})=>{
                 if(!firestoreInstance){
-                    setAccountError('Firestore belum siap. Sistem akan mencoba kembali otomatis.');
+                    setAccountError('Menyiapkan Firebase Production...');
+                    try{ await ensureFirebaseReady(); }
+                    catch(e){
+                        setAccountError(`Firebase bootstrap gagal: ${e.message||e}`);
+                        return false;
+                    }
+                }
+                if(!firestoreInstance){
+                    setAccountError('Firestore tetap belum tersedia setelah bootstrap.');
                     return false;
                 }
                 if(!silent) setLoading(true);
@@ -11121,7 +11240,7 @@ service firebase.storage {
                             <div className="flex items-center gap-2 text-xs">
                                 <span className={`w-2.5 h-2.5 rounded-full ${realtimeStatus?.state==='live'?'bg-green-500 animate-pulse':realtimeStatus?.state==='offline'?'bg-amber-500':realtimeStatus?.state==='error'?'bg-red-500':'bg-blue-400 animate-pulse'}`}></span>
                                 <span className="font-bold text-brand-navy">{realtimeStatus?.state==='live'?'Realtime LIVE':realtimeStatus?.state==='offline'?'Offline':realtimeStatus?.state==='error'?'Realtime bermasalah':'Menghubungkan...'}</span>
-                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v57.3</span>
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-bold">v57.4</span>
                                 <span className="hidden sm:inline text-gray-400">• {realtimeStatus?.listenerCount||0} listener</span>
                             </div>
                             <div className="text-[10px] text-gray-400">
@@ -11158,19 +11277,35 @@ service firebase.storage {
 
             useEffect(()=>{
                 if(!productionMode) return;
-                let lastReady=false;
-                const check=()=>{
-                    const ready=!!(authInstance&&firestoreInstance);
-                    if(ready!==lastReady){
-                        lastReady=ready;
+                let cancelled=false;
+                let timer=null;
+
+                const boot=async()=>{
+                    if(cancelled) return;
+                    try{
+                        setCloudStatus(prev=>prev.state==='ready'?prev:{state:'loading',message:'Menyiapkan Firebase Production...'});
+                        await ensureFirebaseReady();
+                        if(cancelled) return;
                         setFirebaseRuntimeTick(v=>v+1);
-                    }else if(ready && firebaseRuntimeTick===0){
-                        setFirebaseRuntimeTick(v=>v+1);
+                        setCloudStatus(prev=>prev.state==='ready'?prev:{state:'ready',message:`Firebase Production siap • ${firebaseApp?.options?.projectId||'simak-sman1mantang'}`});
+                    }catch(e){
+                        if(cancelled) return;
+                        setCloudStatus({state:'error',message:`Firebase bootstrap: ${e.message||e}`});
+                        timer=setTimeout(boot,3000);
                     }
                 };
-                check();
-                const timer=setInterval(check,500);
-                return ()=>clearInterval(timer);
+
+                boot();
+                const readyHandler=()=>{
+                    if(!cancelled) setFirebaseRuntimeTick(v=>v+1);
+                };
+                window.addEventListener('simak-firebase-ready',readyHandler);
+
+                return ()=>{
+                    cancelled=true;
+                    if(timer) clearTimeout(timer);
+                    window.removeEventListener('simak-firebase-ready',readyHandler);
+                };
             },[productionMode]);
 
             const [rawData,setRawData]=useState(()=>{
@@ -11262,55 +11397,64 @@ service firebase.storage {
                     setAuthLoading(false);
                     return;
                 }
-                if(!isFirebaseConfigReady(getSavedFirebaseConfig())){
-                    setCloudStatus({state:'error',message:'Firebase config belum lengkap'});
-                    setAuthLoading(false);
-                    return;
-                }
-                if(!authInstance||!firestoreInstance){
-                    initFirebase(getSavedFirebaseConfig());
-                }
-                if(!authInstance){
-                    setCloudStatus({state:'error',message:'Firebase Auth gagal diinisialisasi'});
-                    setAuthLoading(false);
-                    return;
-                }
 
-                const unsubscribe=authInstance.onAuthStateChanged(async fbUser=>{
-                    if(!fbUser){
-                        setUser(null);
-                        setAuthLoading(false);
-                        setCloudStatus({state:'idle',message:'Menunggu login Firebase'});
-                        return;
-                    }
+                let cancelled=false;
+                let unsubscribe=null;
+
+                const attachAuth=async()=>{
+                    setAuthLoading(true);
                     try{
-                        const profileSnap=await firestoreInstance.collection('users').doc(fbUser.uid).get();
-                        if(!profileSnap.exists) throw new Error('Profil users/{uid} belum tersedia di Firestore.');
-                        const profileData=profileSnap.data();
-                        if(profileData.active===false) throw new Error('Akun SIMAK dinonaktifkan.');
-                        const session=buildFirebaseSessionProfile(fbUser,profileData);
-                        setUser(session);
-                        setView('dashboard');
-                        setAuthLoading(false);
-                        await updateAccountActivity(fbUser,profileData);
-                        await writeAuditLog({
-                            action:'LOGIN',
-                            module:'Authentication',
-                            collection:'users',
-                            documentId:fbUser.uid,
-                            detail:`Login produksi sebagai ${profileData.role||'-'}`,
-                            actor:fbUser
+                        await ensureFirebaseReady();
+                        if(cancelled) return;
+                        if(!authInstance||!firestoreInstance) throw new Error('Auth/Firestore belum tersedia setelah bootstrap.');
+
+                        unsubscribe=authInstance.onAuthStateChanged(async fbUser=>{
+                            if(cancelled) return;
+                            if(!fbUser){
+                                setUser(null);
+                                setAuthLoading(false);
+                                setCloudStatus({state:'idle',message:'Firebase Production siap • menunggu login'});
+                                return;
+                            }
+                            try{
+                                const profileSnap=await firestoreInstance.collection('users').doc(fbUser.uid).get();
+                                if(!profileSnap.exists) throw new Error('Profil users/{uid} belum tersedia di Firestore.');
+                                const profileData=profileSnap.data();
+                                if(profileData.active===false) throw new Error('Akun SIMAK dinonaktifkan.');
+                                const session=buildFirebaseSessionProfile(fbUser,profileData);
+                                setUser(session);
+                                setView('dashboard');
+                                setAuthLoading(false);
+                                await updateAccountActivity(fbUser,profileData);
+                                await writeAuditLog({
+                                    action:'LOGIN',
+                                    module:'Authentication',
+                                    collection:'users',
+                                    documentId:fbUser.uid,
+                                    detail:`Login produksi sebagai ${profileData.role||'-'}`,
+                                    actor:fbUser
+                                });
+                                await refreshCloudData(session);
+                            }catch(e){
+                                setCloudStatus({state:'error',message:e.message||String(e)});
+                                setAuthLoading(false);
+                                try{await authInstance.signOut();}catch(_){}
+                                setUser(null);
+                            }
                         });
-                        await refreshCloudData(session);
                     }catch(e){
-                        setCloudStatus({state:'error',message:e.message||String(e)});
+                        if(cancelled) return;
+                        setCloudStatus({state:'error',message:`Firebase bootstrap gagal: ${e.message||e}`});
                         setAuthLoading(false);
-                        try{await authInstance.signOut();}catch(_){}
-                        setUser(null);
                     }
-                });
-                return ()=>unsubscribe&&unsubscribe();
-            },[productionMode]);
+                };
+
+                attachAuth();
+                return ()=>{
+                    cancelled=true;
+                    try{unsubscribe&&unsubscribe();}catch(e){}
+                };
+            },[productionMode,firebaseRuntimeTick]);
 
 
             useEffect(()=>{
@@ -11320,10 +11464,13 @@ service firebase.storage {
                         ...prev,
                         state:'connecting',
                         label:'Menunggu Firestore...',
-                        message:'Firebase SDK sedang diinisialisasi. Listener akan dipasang otomatis.',
+                        message:'Persistent bootstrap sedang menyiapkan Firebase.',
                         online:typeof navigator!=='undefined'?navigator.onLine:true,
                         listenerCount:0
                     }));
+                    ensureFirebaseReady()
+                        .then(()=>setFirebaseRuntimeTick(v=>v+1))
+                        .catch(e=>setRealtimeStatus(prev=>({...prev,state:'error',label:'Bootstrap Firebase gagal',message:e.message||String(e)})));
                     return;
                 }
 
@@ -11627,7 +11774,7 @@ service firebase.storage {
                         leaveRequests:rawData.leaveRequests,
                         academicPeriods:rawData.academicPeriods
                     }));
-                    localStorage.setItem('simak_schema_version','57.3');
+                    localStorage.setItem('simak_schema_version','57.4');
                 }catch(e){}
             },[rawData]);
 

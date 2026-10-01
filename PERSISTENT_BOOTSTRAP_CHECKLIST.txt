@@ -1,0 +1,16 @@
+SIMAK SMANTANG v57.4 — PERSISTENT FIREBASE BOOTSTRAP CHECKLIST
+
+[ ] Badge v57.4 tampil
+[ ] Tidak perlu mengisi Firebase config lagi
+[ ] Firebase Production otomatis aktif pada Vercel
+[ ] Refresh halaman memulihkan session Firebase
+[ ] Manajemen Akun = 166
+[ ] Sumber data sehat
+[ ] Realtime LIVE
+[ ] Listener > 0
+[ ] Tidak perlu membuka Firebase Production untuk inisialisasi
+[ ] Tidak perlu Recovery Load pada startup normal
+[ ] Perubahan perangkat A muncul di B tanpa refresh
+[ ] Logout/login bekerja
+[ ] Audit LOGIN/LOGOUT tetap tercatat
+[ ] Secure QR v55 tetap berjalan
